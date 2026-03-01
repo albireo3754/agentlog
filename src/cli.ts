@@ -8,7 +8,7 @@
  *   agentlog hook                     — invoked by Claude Code UserPromptSubmit hook
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 import { saveConfig, expandHome } from "./config.js";
@@ -31,10 +31,12 @@ function usage(): void {
   console.log(`Usage:
   agentlog init [vault] [--plain]   Configure vault and register hook
   agentlog detect                   List detected Obsidian vaults
+  agentlog uninstall                Remove hook and config
   agentlog hook                     Run hook (called by Claude Code)
 
 Options:
-  --plain   Write to plain folder without Obsidian timeblock parsing
+  --plain       Write to plain folder without Obsidian timeblock parsing
+  --yes         Skip confirmation prompt (for uninstall)
 `);
 }
 
@@ -188,6 +190,73 @@ async function cmdDetect(): Promise<void> {
   });
 }
 
+function unregisterHook(): boolean {
+  if (!existsSync(CLAUDE_SETTINGS_PATH)) return false;
+
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8"));
+  } catch {
+    return false;
+  }
+
+  const hooks = settings["hooks"] as Record<string, unknown> | undefined;
+  if (!hooks || !Array.isArray(hooks["UserPromptSubmit"])) return false;
+
+  const before = hooks["UserPromptSubmit"] as unknown[];
+  const after = before.filter(
+    (entry) =>
+      !(
+        typeof entry === "object" &&
+        entry !== null &&
+        Array.isArray((entry as Record<string, unknown>)["hooks"]) &&
+        ((entry as Record<string, unknown>)["hooks"] as unknown[]).some(
+          (h) =>
+            typeof h === "object" &&
+            h !== null &&
+            (h as Record<string, unknown>)["command"] === "agentlog hook"
+        )
+      )
+  );
+
+  if (after.length === before.length) return false; // nothing removed
+
+  hooks["UserPromptSubmit"] = after;
+  writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
+  return true;
+}
+
+async function cmdUninstall(args: string[]): Promise<void> {
+  const skipConfirm = args.includes("--yes");
+  const configDir = join(homedir(), ".agentlog");
+
+  if (!skipConfirm && process.stdin.isTTY) {
+    const answer = await ask("Remove AgentLog hook and config? [y/N]: ");
+    if (answer.toLowerCase() !== "y") {
+      console.log("Aborted.");
+      return;
+    }
+  }
+
+  // Remove hook from ~/.claude/settings.json
+  const hookRemoved = unregisterHook();
+  if (hookRemoved) {
+    console.log(`Hook removed: ${CLAUDE_SETTINGS_PATH}`);
+  } else {
+    console.log(`Hook not found (already removed or never registered)`);
+  }
+
+  // Remove ~/.agentlog/
+  if (existsSync(configDir)) {
+    rmSync(configDir, { recursive: true, force: true });
+    console.log(`Config removed: ${configDir}`);
+  } else {
+    console.log(`Config not found (already removed)`);
+  }
+
+  console.log("\nAgentLog uninstalled.");
+}
+
 function registerHook(): void {
   // Ensure ~/.claude exists
   mkdirSync(join(homedir(), ".claude"), { recursive: true });
@@ -250,6 +319,9 @@ switch (command) {
     break;
   case "detect":
     await cmdDetect();
+    break;
+  case "uninstall":
+    await cmdUninstall(rest);
     break;
   case "hook":
     await cmdHook();
