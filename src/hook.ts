@@ -1,0 +1,55 @@
+/**
+ * AgentLog hook entry point.
+ *
+ * Invoked by Claude Code UserPromptSubmit hook via stdin JSON.
+ * Reads prompt, determines Daily Note path, delegates to note-writer.
+ *
+ * Design: fail silently — never interrupt Claude Code.
+ */
+
+import { loadConfig } from "./config.js";
+import { parseHookInput } from "./schema/hook-input.js";
+import { appendEntry } from "./note-writer.js";
+
+async function main(): Promise<void> {
+  // 1. Load config — if absent, exit silently (not initialized)
+  const config = loadConfig();
+  if (!config) return;
+
+  // 2. Read stdin
+  let raw = "";
+  for await (const chunk of Bun.stdin.stream()) {
+    raw += new TextDecoder().decode(chunk);
+  }
+
+  // 3. Parse hook input
+  let parsed;
+  try {
+    parsed = parseHookInput(raw);
+  } catch (err) {
+    process.stderr.write(`[agentlog] parse error: ${err}\n`);
+    return;
+  }
+
+  // 4. Build time string
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const time = `${hh}:${mm}`;
+
+  // 5. Append entry to Daily Note
+  const entry = {
+    time,
+    prompt: parsed.prompt.slice(0, 100),
+  };
+
+  try {
+    appendEntry(config, entry, now);
+  } catch (err) {
+    process.stderr.write(`[agentlog] write error: ${err}\n`);
+  }
+}
+
+main().catch((err) => {
+  process.stderr.write(`[agentlog] fatal: ${err}\n`);
+});

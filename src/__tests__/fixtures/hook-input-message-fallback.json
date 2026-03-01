@@ -1,0 +1,6 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "abc123",
+  "cwd": "/work",
+  "message": { "content": "메시지 컨텐츠 경로" }
+}

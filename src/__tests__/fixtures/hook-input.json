@@ -1,0 +1,6 @@
+{
+  "hook_event_name": "UserPromptSubmit",
+  "session_id": "abc123",
+  "cwd": "/Users/pray/work/js/agentlog",
+  "prompt": "agentlog 개발을 위해서 작업 진행"
+}
