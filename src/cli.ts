@@ -36,7 +36,7 @@ function usage(): void {
 
 Options:
   --plain       Write to plain folder without Obsidian timeblock parsing
-  --yes         Skip confirmation prompt (for uninstall)
+  -y            Skip confirmation prompt (for uninstall)
 `);
 }
 
@@ -227,7 +227,7 @@ function unregisterHook(): boolean {
 }
 
 async function cmdUninstall(args: string[]): Promise<void> {
-  const skipConfirm = args.includes("--yes");
+  const skipConfirm = args.includes("-y");
   const configDir = join(homedir(), ".agentlog");
 
   if (!skipConfirm && process.stdin.isTTY) {
