@@ -18,17 +18,20 @@ function makeTmpDir(): string {
 const FIXTURE_WITH_TIMEBLOCKS = `# 2026-03-01
 
 ## 오전 (08-13)
-- [ ] 08 - 10
+- [ ] 08 - 09
+- [ ] 09 - 10
 - [ ] 10 - 12
 - [ ] 12 - 13
 
-## 오후 (13-18)
+## 오후 (13-17)
 - [ ] 13 - 15
-- [ ] 15 - 18
+- [ ] 15 - 17
 
-## 저녁 (18-22)
-- [ ] 18 - 20
-- [ ] 20 - 22`;
+## 저녁 (17-24)
+- [ ] 17 - 19
+- [ ] 19 - 21
+- [ ] 21 - 23
+- [ ] 23 - 24`;
 
 const FIXTURE_NO_TIMEBLOCKS = `# 2026-03-01
 
@@ -88,8 +91,8 @@ describe("appendEntry — timeblock mode", () => {
     expect(lines[blockIdx + 1]).toBe("  - 10:53 테스트 작업");
   });
 
-  // N2: first block (08 - 10)
-  it("inserts entry under the 08-10 timeblock for hour 08", () => {
+  // N2: first block (08 - 09)
+  it("inserts entry under the 08-09 timeblock for hour 08", () => {
     const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
     writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
 

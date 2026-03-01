@@ -1,5 +1,6 @@
 node_modules/
 dist/
-.omc/
+.omc/state
+.omc/project-memory.json
 .omx/
 *.tsbuildinfo

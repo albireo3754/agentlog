@@ -34,7 +34,7 @@ No manual logging. No copy-paste. No AI summarization overhead.
 ## Install
 
 ```bash
-# With Bun (recommended)
+# With Bun
 bunx agentlog init ~/path/to/vault
 
 # With npm
@@ -45,7 +45,8 @@ npx agentlog init ~/path/to/vault
 
 - [Claude Code](https://claude.ai/code) (hook integration)
 - [Obsidian](https://obsidian.md) (Daily Note target)
-- [Bun](https://bun.sh) or Node.js 18+
+- [Bun](https://bun.sh) (>=1.0.0, supports `bunx`)
+- [Node.js](https://nodejs.org) >=20 + npm (supports `npx`)
 
 ## Usage
 

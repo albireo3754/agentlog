@@ -11,7 +11,13 @@
     "dev": "bun run src/cli.ts",
     "prepublishOnly": "bun run build",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "sync:readme": "node scripts/sync-readme.mjs",
+    "verify:readme": "node scripts/sync-readme.mjs --check"
+  },
+  "engines": {
+    "node": ">=20",
+    "bun": ">=1.0.0"
   },
   "files": [
     "dist",

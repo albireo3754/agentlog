@@ -17,16 +17,17 @@ export const TIMEBLOCK_PERIODS = {
 } as const;
 
 /** Time-block hour ranges as [startHour, endHour] pairs */
-export const TIME_BLOCKS: Array<[number, number]> = [
-  [8, 10],
-  [10, 12],
-  [12, 13],
-  [13, 15],
-  [15, 17],
-  [17, 19],
-  [19, 21],
-  [21, 23],
-];
+export const TIME_BLOCKS: Array<[number, number]> = Object.values(
+  TIMEBLOCK_PERIODS
+).flatMap((period) =>
+  period.blocks.map((block) => {
+    const [startText, endText] = block.split(" - ");
+    return [Number.parseInt(startText, 10), Number.parseInt(endText, 10)] as [
+      number,
+      number
+    ];
+  })
+);
 
 /**
  * Returns the Daily Note file name for a given date.

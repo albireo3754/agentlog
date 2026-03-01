@@ -51,19 +51,19 @@ describe("findTimeBlock", () => {
     expect(result).toContain("12");
   });
 
-  // T4: hour 8 → "8 - 10"
-  it("returns '8 - 10' for hour 8", () => {
-    expect(findTimeBlock(8)).toBe("8 - 10");
+  // T4: hour 8 → "8 - 9" (오전 첫 블록)
+  it("returns '8 - 9' for hour 8", () => {
+    expect(findTimeBlock(8)).toBe("8 - 9");
   });
 
-  // T5: hour outside all blocks → null
-  it("returns null for hour 0 (outside defined blocks)", () => {
-    expect(findTimeBlock(0)).toBeNull();
+  // T5: hour 0 → "0 - 2" (새벽 첫 블록)
+  it("returns '0 - 2' for hour 0 (새벽 block)", () => {
+    expect(findTimeBlock(0)).toBe("0 - 2");
   });
 
-  // T6: hour 23 → null (23 is end boundary, not inside any block)
-  it("returns null for hour 23", () => {
-    expect(findTimeBlock(23)).toBeNull();
+  // T6: hour 23 → "23 - 24" (저녁 마지막 블록)
+  it("returns '23 - 24' for hour 23", () => {
+    expect(findTimeBlock(23)).toBe("23 - 24");
   });
 });
 
