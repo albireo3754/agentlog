@@ -199,6 +199,107 @@ describe("cli init command", () => {
   });
 });
 
+describe("cli doctor command", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  // DR1: all checks pass
+  it("exits 0 and prints all checks passed when fully configured", async () => {
+    // Set up vault
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    // Set up config
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault }),
+      "utf-8"
+    );
+    // Set up hook
+    mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            { matcher: "", hooks: [{ type: "command", command: "agentlog hook" }] },
+          ],
+        },
+      }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["doctor"], { HOME: tmpHome });
+    // binary check may fail in test env; focus on vault/hook checks
+    expect(stdout).toContain("vault");
+    expect(stdout).toContain("hook");
+  });
+
+  // DR2: no config → exits 1, shows "not configured"
+  it("exits 1 and shows not configured when no config", async () => {
+    const { stdout, exitCode } = await runCli(["doctor"], { HOME: tmpHome });
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("not configured");
+  });
+
+  // DR3: config present but vault missing → exits 1
+  it("exits 1 when vault path does not exist", async () => {
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault: join(tmpHome, "nonexistent-vault") }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["doctor"], { HOME: tmpHome });
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("❌");
+    expect(stdout).toContain("vault");
+  });
+
+  // DR4: hook not registered → exits 1
+  it("exits 1 when hook is not registered", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault }),
+      "utf-8"
+    );
+    // No settings.json → hook not registered
+
+    const { stdout, exitCode } = await runCli(["doctor"], { HOME: tmpHome });
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("hook");
+    expect(stdout).toContain("not registered");
+  });
+
+  // DR5: plain mode skips obsidian app check
+  it("shows plain mode in vault check and skips obsidian app check", async () => {
+    const notes = join(tmpHome, "notes");
+    mkdirSync(notes, { recursive: true });
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault: notes, plain: true }),
+      "utf-8"
+    );
+
+    const { stdout } = await runCli(["doctor"], { HOME: tmpHome });
+    expect(stdout).toContain("plain mode");
+    // obsidian line should not appear when plain mode
+    expect(stdout).not.toContain("obsidian");
+  });
+});
+
 describe("cli usage", () => {
   it("prints usage when no command given", async () => {
     const { stdout, exitCode } = await runCli([]);

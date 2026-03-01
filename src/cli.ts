@@ -11,7 +11,8 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
-import { saveConfig, expandHome } from "./config.js";
+import { spawnSync } from "child_process";
+import { saveConfig, loadConfig, expandHome } from "./config.js";
 import { detectVaults } from "./detect.js";
 import * as readline from "readline";
 
@@ -31,6 +32,7 @@ function usage(): void {
   console.log(`Usage:
   agentlog init [vault] [--plain]   Configure vault and register hook
   agentlog detect                   List detected Obsidian vaults
+  agentlog doctor                   Check installation health
   agentlog uninstall                Remove hook and config
   agentlog hook                     Run hook (called by Claude Code)
 
@@ -304,6 +306,101 @@ function registerHook(): void {
   writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
 }
 
+/** Returns true if the agentlog hook is registered in ~/.claude/settings.json */
+function isHookRegistered(): boolean {
+  if (!existsSync(CLAUDE_SETTINGS_PATH)) return false;
+  try {
+    const settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8")) as Record<string, unknown>;
+    const hooks = settings["hooks"] as Record<string, unknown> | undefined;
+    if (!hooks || !Array.isArray(hooks["UserPromptSubmit"])) return false;
+    return (hooks["UserPromptSubmit"] as unknown[]).some(
+      (entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        Array.isArray((entry as Record<string, unknown>)["hooks"]) &&
+        ((entry as Record<string, unknown>)["hooks"] as unknown[]).some(
+          (h) =>
+            typeof h === "object" &&
+            h !== null &&
+            (h as Record<string, unknown>)["command"] === "agentlog hook"
+        )
+    );
+  } catch {
+    return false;
+  }
+}
+
+/** agentlog doctor — check installation health */
+async function cmdDoctor(): Promise<void> {
+  let allOk = true;
+
+  function check(label: string, ok: boolean, detail: string, hint?: string): void {
+    const icon = ok ? "✅" : "❌";
+    const suffix = !ok && hint ? `  →  ${hint}` : "";
+    console.log(`${icon} ${label.padEnd(10)} ${detail}${suffix}`);
+    if (!ok) allOk = false;
+  }
+
+  // 1. Binary in PATH
+  const which = spawnSync("which", ["agentlog"], { encoding: "utf-8" });
+  const binPath = which.status === 0 ? which.stdout.trim() : "";
+  check("binary", !!binPath, binPath || "not found in PATH", "run: npm install -g agentlog");
+
+  // 2. Vault (covers both config presence and vault validity)
+  const config = loadConfig();
+  if (!config) {
+    check("vault", false, "not configured", "run: agentlog init ~/path/to/vault");
+  } else if (config.plain) {
+    const vaultOk = existsSync(config.vault);
+    check(
+      "vault",
+      vaultOk,
+      vaultOk ? `${config.vault} (plain mode)` : `${config.vault} — directory not found`,
+      vaultOk ? undefined : "run: agentlog init ~/new/path"
+    );
+  } else {
+    const vaultOk = existsSync(join(config.vault, ".obsidian"));
+    check(
+      "vault",
+      vaultOk,
+      vaultOk ? config.vault : `${config.vault} — .obsidian not found`,
+      vaultOk ? undefined : "open this folder in Obsidian, or run: agentlog init ~/new/vault"
+    );
+  }
+
+  // 4. Obsidian app installed (macOS only, skip for plain mode)
+  if (process.platform === "darwin" && (!config || !config.plain)) {
+    const obsidianPaths = [
+      "/Applications/Obsidian.app",
+      join(homedir(), "Applications", "Obsidian.app"),
+    ];
+    const foundPath = obsidianPaths.find((p) => existsSync(p));
+    check(
+      "obsidian",
+      !!foundPath,
+      foundPath ?? "not installed",
+      "brew install --cask obsidian  or  https://obsidian.md/download"
+    );
+  }
+
+  // 5. Hook registered
+  const hookOk = isHookRegistered();
+  check(
+    "hook",
+    hookOk,
+    hookOk ? CLAUDE_SETTINGS_PATH : "not registered",
+    "run: agentlog init  to re-register"
+  );
+
+  console.log("");
+  if (allOk) {
+    console.log("All checks passed.");
+  } else {
+    console.log("Some checks failed. Fix the issues above and re-run: agentlog doctor");
+    process.exit(1);
+  }
+}
+
 async function cmdHook(): Promise<void> {
   // Dynamically import hook to avoid loading it unless needed
   await import("./hook.js");
@@ -319,6 +416,9 @@ switch (command) {
     break;
   case "detect":
     await cmdDetect();
+    break;
+  case "doctor":
+    await cmdDoctor();
     break;
   case "uninstall":
     await cmdUninstall(rest);
