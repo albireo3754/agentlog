@@ -148,6 +148,7 @@ async function interactiveInit(plain: boolean): Promise<void> {
   console.log("");
 
   if (!process.stdin.isTTY) {
+    console.log(`Auto-selecting vault: ${vaults[0].path}`);
     await runInit(vaults[0].path, false);
     return;
   }
