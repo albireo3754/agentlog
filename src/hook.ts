@@ -22,9 +22,12 @@ function readStdin(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  // 1. Load config — if absent, exit silently (not initialized)
+  // 1. Load config — if absent, hint and exit (not initialized)
   const config = loadConfig();
-  if (!config) return;
+  if (!config) {
+    process.stderr.write("[agentlog] not initialized. Run: agentlog init ~/path/to/vault\n");
+    return;
+  }
 
   // 2. Read stdin (cross-runtime: works with both Bun and Node.js)
   const raw = await readStdin();

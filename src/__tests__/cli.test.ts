@@ -76,7 +76,7 @@ describe("cli init command", () => {
     const { stderr, exitCode } = await runCli(["init", vault], { HOME: tmpHome });
 
     expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Obsidian vault가 감지되지 않았습니다");
+    expect(stderr).toContain("Obsidian vault not detected");
   });
 
   // CL3: init with --plain flag
@@ -189,10 +189,13 @@ describe("cli init command", () => {
     }
   });
 
-  // No vault arg → exits with error
-  it("exits with error when no vault path is provided", async () => {
-    const { exitCode } = await runCli(["init"], { HOME: tmpHome });
-    expect(exitCode).not.toBe(0);
+  // No vault arg → shows detection guide (non-TTY exits 0)
+  it("shows vault detection guide when no vault path is provided", async () => {
+    const { exitCode, stdout, stderr } = await runCli(["init"], { HOME: tmpHome });
+    expect(exitCode).toBe(0);
+    // In non-TTY with no vaults detected, outputs detection guide
+    const output = stdout + stderr;
+    expect(output).toMatch(/No Obsidian vaults detected|Detected Obsidian vault/);
   });
 });
 
