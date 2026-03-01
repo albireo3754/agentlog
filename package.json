@@ -9,9 +9,16 @@
   "scripts": {
     "build": "bun build src/cli.ts src/hook.ts --outdir dist --target bun",
     "dev": "bun run src/cli.ts",
+    "prepublishOnly": "bun run build",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "docs"
+  ],
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.4.0"
