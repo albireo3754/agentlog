@@ -4,14 +4,16 @@
   "description": "Claude Code prompts → Obsidian Daily Note auto-logger",
   "type": "module",
   "bin": {
-    "agentlog": "./dist/cli.js"
+    "agentlog": "./src/cli.ts"
   },
   "scripts": {
     "build": "bun build src/cli.ts src/hook.ts --outdir dist --target node",
     "dev": "bun run src/cli.ts",
-    "prepublishOnly": "bun run build",
+    "dev:watch": "bun run --watch src/cli.ts",
+    "prepublishOnly": "bun run typecheck",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/postinstall.mjs",
     "sync:readme": "node scripts/sync-readme.mjs",
     "verify:readme": "node scripts/sync-readme.mjs --check"
   },
@@ -20,7 +22,8 @@
     "bun": ">=1.0.0"
   },
   "files": [
-    "dist",
+    "src",
+    "!src/__tests__",
     "README.md",
     "LICENSE",
     "docs"

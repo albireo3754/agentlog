@@ -166,8 +166,25 @@ src/
 bun install
 bun test          # 74 tests
 bun run typecheck # tsc --noEmit
-bun run build     # compile to dist/
+bun run build     # compile to dist/ (optional)
 ```
+
+### Local Development (no build step)
+
+`bin` points directly to `src/cli.ts`. Bun runs TypeScript natively, so there's no build step during development.
+
+```bash
+# One-time: link agentlog as a global command
+bun link
+
+# Edit src/cli.ts → changes are live immediately
+agentlog --help
+
+# Watch mode (auto-restart on save)
+bun run dev:watch
+```
+
+`bun link` symlinks the global `agentlog` command to the source directory. Every invocation picks up the latest `src/cli.ts` — no rebuild needed.
 
 ## Roadmap
 
