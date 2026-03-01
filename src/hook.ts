@@ -11,16 +11,23 @@ import { loadConfig } from "./config.js";
 import { parseHookInput } from "./schema/hook-input.js";
 import { appendEntry } from "./note-writer.js";
 
+/** Read all stdin as a string. Works with both Bun and Node.js. */
+function readStdin(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    process.stdin.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    process.stdin.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+    process.stdin.on("error", reject);
+  });
+}
+
 async function main(): Promise<void> {
   // 1. Load config — if absent, exit silently (not initialized)
   const config = loadConfig();
   if (!config) return;
 
-  // 2. Read stdin
-  let raw = "";
-  for await (const chunk of Bun.stdin.stream()) {
-    raw += new TextDecoder().decode(chunk);
-  }
+  // 2. Read stdin (cross-runtime: works with both Bun and Node.js)
+  const raw = await readStdin();
 
   // 3. Parse hook input
   let parsed;
