@@ -56,8 +56,18 @@ describe("prettyPrompt", () => {
     expect(prettyPrompt("fix the login bug")).toBe("fix the login bug");
   });
 
-  it("collapses multi-line prompts to single line", () => {
-    expect(prettyPrompt("line one\nline two\nline three")).toBe("line one line two line three");
+  it("collapses 2-line prompts by joining", () => {
+    expect(prettyPrompt("line one\nline two")).toBe("line one line two");
+  });
+
+  it("collapses 3+ line prompts with (+N lines) summary", () => {
+    expect(prettyPrompt("line one\nline two\nline three")).toBe("line one (+1 lines) line three");
+    expect(prettyPrompt("a\nb\nc\nd\ne")).toBe("a (+3 lines) e");
+  });
+
+  it("excludes empty lines from collapsed count", () => {
+    expect(prettyPrompt("first\n\n\nlast")).toBe("first last");
+    expect(prettyPrompt("first\nsecond\n\nthird\nfourth")).toBe("first (+2 lines) fourth");
   });
 
   it("strips markdown headings", () => {
@@ -82,6 +92,7 @@ describe("prettyPrompt", () => {
   });
 
   it("strips code fences", () => {
+    // After stripping ``` markers, only "const x = 1;" remains (1 non-empty line)
     expect(prettyPrompt("```typescript\nconst x = 1;\n```")).toBe("const x = 1;");
   });
 

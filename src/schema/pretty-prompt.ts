@@ -25,6 +25,21 @@ const SKIP_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * Collapse multi-line text into a summary.
+ * - 1-2 lines: join with space
+ * - 3+ lines: "first line (+N lines) last line"
+ * Empty lines after strip are excluded from count.
+ */
+function collapseLines(text: string): string {
+  const lines = text.split("\n").map((l) => l.replace(/\s{2,}/g, " ").trim()).filter(Boolean);
+  if (lines.length <= 2) {
+    return lines.join(" ");
+  }
+  const skipped = lines.length - 2;
+  return `${lines[0]} (+${skipped} lines) ${lines[lines.length - 1]}`;
+}
+
+/**
  * Sanitize a raw prompt string for single-line Daily Note display.
  * Returns null if the prompt is system noise and should not be logged.
  */
@@ -63,8 +78,8 @@ export function prettyPrompt(raw: string): string | null {
   // 8. Strip code fence markers
   text = text.replace(/^```\w*$/gm, "");
 
-  // 9. Collapse whitespace: newlines → space, multiple spaces → single
-  text = text.replace(/\s*\n\s*/g, " ").replace(/\s{2,}/g, " ");
+  // 9. Collapse multi-line: first line + (+N lines) + last line
+  text = collapseLines(text);
 
   // 10. Trim again after all transformations
   text = text.trim();
