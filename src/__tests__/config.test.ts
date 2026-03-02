@@ -1,54 +1,41 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
 import { tmpdir } from "os";
+import { homedir } from "os";
 
-// We test config functions by overriding the module's path resolution via temp dirs.
-// Since CONFIG_PATH is hardcoded to ~/.agentlog/config.json, we import and test
-// the exported functions directly (loadConfig/saveConfig operate on that fixed path).
-// For isolation, we back up and restore any real config.
+// Tests use AGENTLOG_CONFIG_DIR to isolate from real ~/.agentlog/config.json.
+// No backup/restore dance needed — each test gets a fresh temp directory.
 
 import { loadConfig, saveConfig, expandHome, configPath } from "../config.js";
 
-const REAL_CONFIG = join(homedir(), ".agentlog", "config.json");
-const BACKUP_PATH = join(tmpdir(), `agentlog-config-backup-${Date.now()}.json`);
+let tempDir: string;
 
-function backupConfig() {
-  if (existsSync(REAL_CONFIG)) {
-    const content = Bun.file(REAL_CONFIG).toString();
-    writeFileSync(BACKUP_PATH, content, "utf-8");
-    return true;
-  }
-  return false;
-}
-
-function restoreConfig(hadBackup: boolean) {
-  if (hadBackup && existsSync(BACKUP_PATH)) {
-    const content = Bun.file(BACKUP_PATH).toString();
-    writeFileSync(REAL_CONFIG, content, "utf-8");
-    rmSync(BACKUP_PATH, { force: true });
-  } else {
-    // Remove any test-written config
-    rmSync(REAL_CONFIG, { force: true });
-  }
+function makeTempDir(): string {
+  const dir = join(tmpdir(), `agentlog-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
 }
 
 describe("config", () => {
-  let hadBackup = false;
-
   beforeEach(() => {
-    hadBackup = backupConfig();
-    // Remove config so each test starts clean
-    rmSync(REAL_CONFIG, { force: true });
+    tempDir = makeTempDir();
+    process.env.AGENTLOG_CONFIG_DIR = tempDir;
   });
 
   afterEach(() => {
-    restoreConfig(hadBackup);
+    delete process.env.AGENTLOG_CONFIG_DIR;
+    rmSync(tempDir, { recursive: true, force: true });
   });
 
-  // C10: configPath returns expected location
-  it("configPath returns ~/.agentlog/config.json", () => {
+  // C10: configPath respects AGENTLOG_CONFIG_DIR
+  it("configPath returns path under AGENTLOG_CONFIG_DIR when set", () => {
+    expect(configPath()).toBe(join(tempDir, "config.json"));
+  });
+
+  // C10b: configPath defaults to ~/.agentlog when env is unset
+  it("configPath defaults to ~/.agentlog/config.json", () => {
+    delete process.env.AGENTLOG_CONFIG_DIR;
     expect(configPath()).toBe(join(homedir(), ".agentlog", "config.json"));
   });
 
@@ -60,8 +47,7 @@ describe("config", () => {
   // C1: loadConfig when file exists
   it("loadConfig returns parsed config when file exists", () => {
     const cfg = { vault: "/Users/testuser/Obsidian" };
-    mkdirSync(join(homedir(), ".agentlog"), { recursive: true });
-    writeFileSync(REAL_CONFIG, JSON.stringify(cfg), "utf-8");
+    writeFileSync(join(tempDir, "config.json"), JSON.stringify(cfg), "utf-8");
 
     const result = loadConfig();
     expect(result).not.toBeNull();
@@ -70,21 +56,20 @@ describe("config", () => {
 
   // C3: loadConfig with malformed JSON
   it("loadConfig returns null when config file has malformed JSON", () => {
-    mkdirSync(join(homedir(), ".agentlog"), { recursive: true });
-    writeFileSync(REAL_CONFIG, "{broken", "utf-8");
+    writeFileSync(join(tempDir, "config.json"), "{broken", "utf-8");
 
     expect(loadConfig()).toBeNull();
   });
 
   // C4: saveConfig creates dir if missing
-  it("saveConfig creates the .agentlog directory if it does not exist", () => {
-    const agentlogDir = join(homedir(), ".agentlog");
-    rmSync(agentlogDir, { recursive: true, force: true });
+  it("saveConfig creates the config directory if it does not exist", () => {
+    const nested = join(tempDir, "nested");
+    process.env.AGENTLOG_CONFIG_DIR = nested;
 
     saveConfig({ vault: "/some/vault" });
 
-    expect(existsSync(agentlogDir)).toBe(true);
-    expect(existsSync(REAL_CONFIG)).toBe(true);
+    expect(existsSync(nested)).toBe(true);
+    expect(existsSync(join(nested, "config.json"))).toBe(true);
   });
 
   // C5: saveConfig expands ~ in vault path
