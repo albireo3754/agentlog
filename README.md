@@ -147,7 +147,6 @@ With `--plain`, entries go to `{folder}/YYYY-MM-DD.md`:
 |-------|---------|-------------|
 | `vault` | (required) | Obsidian vault 또는 plain 폴더 경로 |
 | `plain` | `false` | Plain 모드 (Obsidian 없이 단순 파일 기록) |
-| `writeMode` | `"auto"` | `"auto"`: CLI 우선 → file fallback, `"file"`: 직접 쓰기, `"cli"`: CLI 우선 |
 
 환경변수:
 
