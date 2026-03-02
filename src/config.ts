@@ -3,17 +3,19 @@ import { homedir } from "os";
 import { join } from "path";
 import type { AgentLogConfig } from "./types.js";
 
-const CONFIG_DIR = join(homedir(), ".agentlog");
-const CONFIG_PATH = join(CONFIG_DIR, "config.json");
+export function configDir(): string {
+  return process.env.AGENTLOG_CONFIG_DIR ?? join(homedir(), ".agentlog");
+}
 
 export function configPath(): string {
-  return CONFIG_PATH;
+  return join(configDir(), "config.json");
 }
 
 export function loadConfig(): AgentLogConfig | null {
-  if (!existsSync(CONFIG_PATH)) return null;
+  const cfgPath = configPath();
+  if (!existsSync(cfgPath)) return null;
   try {
-    const raw = readFileSync(CONFIG_PATH, "utf-8");
+    const raw = readFileSync(cfgPath, "utf-8");
     return JSON.parse(raw) as AgentLogConfig;
   } catch {
     return null;
@@ -21,13 +23,14 @@ export function loadConfig(): AgentLogConfig | null {
 }
 
 export function saveConfig(config: AgentLogConfig): void {
-  mkdirSync(CONFIG_DIR, { recursive: true });
+  const cfgDir = configDir();
+  mkdirSync(cfgDir, { recursive: true });
   // Expand ~ in vault path before saving
   const normalized: AgentLogConfig = {
     ...config,
     vault: expandHome(config.vault),
   };
-  writeFileSync(CONFIG_PATH, JSON.stringify(normalized, null, 2), "utf-8");
+  writeFileSync(configPath(), JSON.stringify(normalized, null, 2), "utf-8");
 }
 
 export function expandHome(p: string): string {

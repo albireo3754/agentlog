@@ -12,7 +12,7 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
-import { saveConfig, loadConfig, expandHome } from "./config.js";
+import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./config.js";
 import { detectVaults, detectCli } from "./detect.js";
 import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin } from "./obsidian-cli.js";
 import * as readline from "readline";
@@ -83,7 +83,7 @@ Or to write to a plain folder:
 
   // Save config
   saveConfig({ vault, ...(plain ? { plain: true } : {}) });
-  console.log(`Config saved: ${join(homedir(), ".agentlog", "config.json")}`);
+  console.log(`Config saved: ${configPath()}`);
   console.log(`  vault: ${vault}${plain ? " (plain mode)" : ""}`);
 
   // Probe CLI availability (informational)
@@ -254,7 +254,7 @@ function unregisterHook(): boolean {
 
 async function cmdUninstall(args: string[]): Promise<void> {
   const skipConfirm = args.includes("-y");
-  const configDir = join(homedir(), ".agentlog");
+  const cfgDir = configDir();
 
   if (!skipConfirm && process.stdin.isTTY) {
     const answer = await ask("Remove AgentLog hook and config? [y/N]: ");
@@ -272,10 +272,10 @@ async function cmdUninstall(args: string[]): Promise<void> {
     console.log(`Hook not found (already removed or never registered)`);
   }
 
-  // Remove ~/.agentlog/
-  if (existsSync(configDir)) {
-    rmSync(configDir, { recursive: true, force: true });
-    console.log(`Config removed: ${configDir}`);
+  // Remove config directory
+  if (existsSync(cfgDir)) {
+    rmSync(cfgDir, { recursive: true, force: true });
+    console.log(`Config removed: ${cfgDir}`);
   } else {
     console.log(`Config not found (already removed)`);
   }
