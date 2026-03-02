@@ -2,6 +2,7 @@ node_modules/
 dist/
 .omc/state
 .omc/project-memory.json
+.omc/sessions
 # .omc/plans
 .omc/handoffs
 .omx/

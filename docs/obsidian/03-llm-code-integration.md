@@ -1,6 +1,7 @@
 # Obsidian + LLM + 코드 연동 가이드
 
 > 대상: AgentLog 기반 Claude Code 작업 로그를 Obsidian에 연결해 개발 루프를 자동화하려는 사용자
+> 참고: 공식 CLI 대체 전략은 [06-official-cli-research.md](./06-official-cli-research.md) 참조
 
 ## 1) Claude Code Hook 기반 자동 로깅 구조 (현재 구현)
 

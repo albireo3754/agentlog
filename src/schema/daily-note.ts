@@ -65,8 +65,62 @@ export const TIME_BLOCK_LINE_RE =
 /**
  * Build a log line for insertion into a Daily Note.
  * Format: "  - HH:MM prompt text (max 100 chars)"
+ * @deprecated Use buildAgentLogEntry for new ## AgentLog section entries.
  */
 export function buildLogLine(time: string, prompt: string): string {
   const truncated = prompt.slice(0, 100);
   return `  - ${time} ${truncated}`;
+}
+
+/**
+ * Derives project display name from cwd.
+ * Always returns "parent/basename" (2-level, no special cases).
+ * E.g. "/Users/pray/work/js/agentlog" → "js/agentlog"
+ *      "/Users/pray/worktrees/v5/gate" → "v5/gate"
+ */
+export function cwdToProject(cwd: string): string {
+  const parts = cwd.replace(/\/$/, "").split("/").filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[parts.length - 2]}/${parts[parts.length - 1]}`;
+  }
+  return parts[parts.length - 1] ?? cwd;
+}
+
+/**
+ * Entry line within a #### project section.
+ * Format: "- HH:MM prompt (max 100 chars)"
+ */
+export function buildAgentLogEntry(time: string, prompt: string): string {
+  return `- ${time} ${prompt.slice(0, 100)}`;
+}
+
+/**
+ * Session divider line inserted when session_id changes within a project section.
+ * Format: "- - - - (ses_XXXXXXXX)"
+ */
+export function buildSessionDivider(sessionId: string): string {
+  return `- - - - (ses_${sessionId.slice(0, 8)})`;
+}
+
+/**
+ * Latest entry blockquote pinned at top of ## AgentLog section.
+ * Format: "> 🕐 HH:MM — project › prompt"
+ */
+export function buildLatestLine(time: string, project: string, prompt: string): string {
+  return `> 🕐 ${time} — ${project} › ${prompt}`;
+}
+
+/**
+ * Project subsection header with embedded cwd (matching key) and session short hash.
+ * Format: "#### project · HH:MM <!-- cwd=<path> ses=<sessionShort> -->"
+ *
+ * Structured format ensures correct parsing even when cwd contains spaces.
+ */
+export function buildProjectHeader(
+  project: string,
+  time: string,
+  cwd: string,
+  sessionShort: string
+): string {
+  return `#### ${project} · ${time} <!-- cwd=${cwd} ses=${sessionShort} -->`;
 }

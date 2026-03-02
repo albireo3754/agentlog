@@ -115,7 +115,8 @@ agentlog doctor
 - [ ] `~/.agentlog/config.json`에 원하는 경로가 저장되어 있다.
 - [ ] `~/.claude/settings.json`의 `hooks.UserPromptSubmit`에 `agentlog hook`이 있다.
 - [ ] Claude Code에서 프롬프트 1개를 입력한 뒤, 오늘 Daily Note에 라인이 추가된다.
-- [ ] (타임블록 템플릿 사용 시) 해당 시간 블록이 `[x]`로 표시되고 하위에 `- HH:MM ...`가 붙는다.
+- [ ] (타임블록 템플릿 사용 시) 해당 시간 블록 하위에 `- HH:MM ...` 라인이 추가된다.  
+      *(현재 구현은 블록 체크박스 `[ ] -> [x]` 자동 변경 로직이 없다.)*
 
 수동 훅 테스트(원인 분리용):
 

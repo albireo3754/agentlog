@@ -15,13 +15,16 @@ export interface AgentLogConfig {
 
 /** A single log entry to be written into a Daily Note */
 export interface LogEntry {
-  time: string;   // "HH:MM"
-  prompt: string; // first 100 chars of user prompt
+  time: string;     // "HH:MM"
+  prompt: string;   // first 100 chars of user prompt
+  sessionId: string; // from hook session_id
+  project: string;  // derived from cwd: parent/basename
+  cwd: string;      // full cwd path, used as section matching key
 }
 
 /** Result of writing a log entry */
 export interface WriteResult {
   filePath: string;
   created: boolean; // true if new file was created
-  section: "timeblock" | "agentlog" | "plain" | "cli";
+  section: "agentlog" | "plain";
 }

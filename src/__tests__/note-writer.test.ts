@@ -6,13 +6,24 @@ import { tmpdir } from "os";
 import { appendEntry, dailyNotePath } from "../note-writer.js";
 import type { AgentLogConfig, LogEntry } from "../types.js";
 
-// Fixed test date: 2026-03-01 (일요일, day index 0)
-const TEST_DATE = new Date(2026, 2, 1, 10, 53, 0); // March 1 2026, 10:53
+// Fixed test date: 2026-03-01 (일요일)
+const TEST_DATE = new Date(2026, 2, 1, 10, 53, 0);
 
 function makeTmpDir(): string {
   const dir = join(tmpdir(), `agentlog-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+function makeEntry(overrides: Partial<LogEntry> = {}): LogEntry {
+  return {
+    time: "10:53",
+    prompt: "테스트 작업",
+    sessionId: "abc12345-def6-7890-abcd-ef1234567890",
+    project: "js/agentlog",
+    cwd: "/Users/pray/work/js/agentlog",
+    ...overrides,
+  };
 }
 
 const FIXTURE_WITH_TIMEBLOCKS = `# 2026-03-01
@@ -25,13 +36,7 @@ const FIXTURE_WITH_TIMEBLOCKS = `# 2026-03-01
 
 ## 오후 (13-17)
 - [ ] 13 - 15
-- [ ] 15 - 17
-
-## 저녁 (17-24)
-- [ ] 17 - 19
-- [ ] 19 - 21
-- [ ] 21 - 23
-- [ ] 23 - 24`;
+- [ ] 15 - 17`;
 
 const FIXTURE_NO_TIMEBLOCKS = `# 2026-03-01
 
@@ -41,7 +46,6 @@ describe("dailyNotePath", () => {
   it("returns Obsidian Daily path with Korean day name", () => {
     const config: AgentLogConfig = { vault: "/vault" };
     const path = dailyNotePath(config, TEST_DATE);
-    // 2026-03-01 is 일요일 (day 0 → 일)
     expect(path).toBe("/vault/Daily/2026-03-01-일.md");
   });
 
@@ -52,162 +56,7 @@ describe("dailyNotePath", () => {
   });
 });
 
-describe("appendEntry — timeblock mode", () => {
-  let tmpDir: string;
-  let config: AgentLogConfig;
-
-  beforeEach(() => {
-    tmpDir = makeTmpDir();
-    config = { vault: tmpDir };
-    mkdirSync(join(tmpDir, "Daily"), { recursive: true });
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  // N7: file does not exist → created
-  it("creates Daily Note file if it does not exist", () => {
-    const entry: LogEntry = { time: "10:53", prompt: "hello" };
-    const result = appendEntry(config, entry, TEST_DATE);
-
-    expect(result.created).toBe(true);
-    expect(existsSync(result.filePath)).toBe(true);
-  });
-
-  // N1: append to existing timeblock — exact match 10-12
-  it("inserts entry under the matching 10-12 timeblock", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "테스트 작업" };
-    const result = appendEntry(config, entry, TEST_DATE);
-
-    expect(result.section).toBe("timeblock");
-    const lines = readFileSync(filePath, "utf-8").split("\n");
-    const blockIdx = lines.findIndex((l) => l.includes("10 - 12"));
-    expect(blockIdx).toBeGreaterThan(-1);
-    // The entry line should appear right after the block line
-    expect(lines[blockIdx + 1]).toBe("  - 10:53 테스트 작업");
-  });
-
-  // N2: first block (08 - 09)
-  it("inserts entry under the 08-09 timeblock for hour 08", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
-
-    const earlyDate = new Date(2026, 2, 1, 8, 5, 0);
-    const entry: LogEntry = { time: "08:05", prompt: "아침 작업" };
-    const result = appendEntry(config, entry, earlyDate);
-
-    expect(result.section).toBe("timeblock");
-    const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("  - 08:05 아침 작업");
-  });
-
-  // N3: last block (12 - 13)
-  it("inserts entry under the 12-13 timeblock for hour 12", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
-
-    const noonDate = new Date(2026, 2, 1, 12, 30, 0);
-    const entry: LogEntry = { time: "12:30", prompt: "점심 후 작업" };
-    const result = appendEntry(config, entry, noonDate);
-
-    expect(result.section).toBe("timeblock");
-    const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("  - 12:30 점심 후 작업");
-  });
-
-  // N5: no timeblock headers → AgentLog section
-  it("falls back to ## AgentLog section when no timeblocks present", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "노트 없음" };
-    const result = appendEntry(config, entry, TEST_DATE);
-
-    expect(result.section).toBe("agentlog");
-    const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("## AgentLog");
-    expect(content).toContain("  - 10:53 노트 없음");
-  });
-
-  // N6: ## AgentLog section already exists
-  it("appends under existing ## AgentLog section", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, "# 2026-03-01\n\n## AgentLog\n  - 09:00 기존 항목\n", "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "새 항목" };
-    appendEntry(config, entry, TEST_DATE);
-
-    const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("  - 09:00 기존 항목");
-    expect(content).toContain("  - 10:53 새 항목");
-  });
-
-  // N8: file is empty
-  it("handles empty file without crashing", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, "", "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "빈 파일" };
-    expect(() => appendEntry(config, entry, TEST_DATE)).not.toThrow();
-    const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("  - 10:53 빈 파일");
-  });
-
-  // N9: existing content preserved
-  it("preserves existing file content when appending", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "신규 항목" };
-    appendEntry(config, entry, TEST_DATE);
-
-    const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("오늘 할 일 메모.");
-    expect(content).toContain("  - 10:53 신규 항목");
-  });
-
-  // N10: two writes produce two separate lines (no dedup)
-  it("appends two separate lines on two writes at the same time", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "동일 프롬프트" };
-    appendEntry(config, entry, TEST_DATE);
-    appendEntry(config, entry, TEST_DATE);
-
-    const content = readFileSync(filePath, "utf-8");
-    const matches = content.match(/- 10:53 동일 프롬프트/g) ?? [];
-    expect(matches.length).toBe(2);
-  });
-
-  // N13: WriteResult.section === "timeblock" when block found
-  it("returns section=timeblock when a matching timeblock is found", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "섹션 확인" };
-    const result = appendEntry(config, entry, TEST_DATE);
-
-    expect(result.section).toBe("timeblock");
-  });
-
-  // N14: WriteResult.section === "agentlog" as fallback
-  it("returns section=agentlog when no timeblocks present", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "섹션 확인" };
-    const result = appendEntry(config, entry, TEST_DATE);
-
-    expect(result.section).toBe("agentlog");
-  });
-});
-
-describe("appendEntry — writeMode=file (explicit file mode)", () => {
+describe("appendEntry — session-grouped AgentLog section", () => {
   let tmpDir: string;
   let config: AgentLogConfig;
 
@@ -221,64 +70,242 @@ describe("appendEntry — writeMode=file (explicit file mode)", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it("skips CLI and writes directly to file", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
-
-    const entry: LogEntry = { time: "10:53", prompt: "file mode test" };
-    const result = appendEntry(config, entry, TEST_DATE);
-
-    // Should use file write, not CLI
-    expect(result.section).toBe("timeblock");
-    expect(result.filePath).toBe(filePath);
-    const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("  - 10:53 file mode test");
-  });
-
-  it("creates new file when writeMode is file", () => {
-    const entry: LogEntry = { time: "10:53", prompt: "new file mode" };
+  // N1: new file — creates ## AgentLog + > 🕐 + #### section
+  it("creates ## AgentLog with latest line and project section on new file", () => {
+    const entry = makeEntry();
     const result = appendEntry(config, entry, TEST_DATE);
 
     expect(result.created).toBe(true);
     expect(result.section).toBe("agentlog");
     expect(existsSync(result.filePath)).toBe(true);
-  });
-});
 
-describe("appendEntry — writeMode=auto (default fallback)", () => {
-  let tmpDir: string;
-  let config: AgentLogConfig;
-
-  beforeEach(() => {
-    tmpDir = makeTmpDir();
-    // writeMode undefined = "auto": try CLI first, fall back to file
-    config = { vault: tmpDir };
-    mkdirSync(join(tmpDir, "Daily"), { recursive: true });
+    const content = readFileSync(result.filePath, "utf-8");
+    expect(content).toContain("## AgentLog");
+    expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
+    expect(content).toContain("#### js/agentlog · 10:53 <!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
+    expect(content).toContain("- 10:53 테스트 작업");
   });
 
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+  // N2: file with existing content — appends ## AgentLog at end
+  it("appends ## AgentLog section to existing file without modifying existing content", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    const entry = makeEntry();
+    appendEntry(config, entry, TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("오늘 할 일 메모.");
+    expect(content).toContain("## AgentLog");
+    expect(content).toContain("- 10:53 테스트 작업");
   });
 
-  it("falls back to file write when CLI is unavailable (auto mode)", () => {
+  // N3: file with timeblocks — entries go to ## AgentLog, NOT into timeblocks
+  it("writes to ## AgentLog section even when timeblocks exist (no timeblock insertion)", () => {
     const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
     writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
 
-    const entry: LogEntry = { time: "10:53", prompt: "auto fallback" };
+    const entry = makeEntry();
     const result = appendEntry(config, entry, TEST_DATE);
 
-    // CLI will fail (obsidian not installed in test env), falls back to file
-    expect(["timeblock", "agentlog", "cli"]).toContain(result.section);
+    expect(result.section).toBe("agentlog");
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("  - 10:53 auto fallback");
+    // Entry should be in AgentLog section
+    expect(content).toContain("## AgentLog");
+    expect(content).toContain("- 10:53 테스트 작업");
+    // Timeblock should NOT have the entry
+    const lines = content.split("\n");
+    const blockIdx = lines.findIndex((l) => l.includes("10 - 12"));
+    expect(lines[blockIdx + 1]).not.toContain("10:53");
   });
 
-  it("plain mode always uses file write regardless of writeMode", () => {
-    const plainConfig: AgentLogConfig = { vault: tmpDir, plain: true, writeMode: "auto" };
-    const entry: LogEntry = { time: "10:53", prompt: "plain auto" };
-    const result = appendEntry(plainConfig, entry, TEST_DATE);
+  // N4: same project, same session → append to existing section
+  it("appends to existing project section when project and session match", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
 
-    expect(result.section).toBe("plain");
+    const entry1 = makeEntry({ time: "10:53", prompt: "첫 번째 작업" });
+    const entry2 = makeEntry({ time: "11:07", prompt: "두 번째 작업" });
+    appendEntry(config, entry1, TEST_DATE);
+    appendEntry(config, entry2, TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    // Both entries in same section
+    const sections = content.split("#### ");
+    expect(sections.length).toBe(2); // header + one project section
+    expect(content).toContain("- 10:53 첫 번째 작업");
+    expect(content).toContain("- 11:07 두 번째 작업");
+    // No session divider
+    expect(content).not.toContain("- - - -");
+  });
+
+  // N5: same project, different session → insert divider
+  it("inserts session divider when session changes within same project", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    const entry1 = makeEntry({ time: "10:53", sessionId: "session1-aaaa-bbbb-cccc-dddddddddddd" });
+    const entry2 = makeEntry({ time: "15:00", sessionId: "session2-xxxx-yyyy-zzzz-111111111111" });
+    appendEntry(config, entry1, TEST_DATE);
+    appendEntry(config, entry2, TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("- - - - (ses_session2)");
+    expect(content).toContain("- 10:53 테스트 작업");
+    expect(content).toContain("- 15:00 테스트 작업");
+  });
+
+  // N6: different projects → separate #### sections
+  it("creates separate sections for different projects", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    const entry1 = makeEntry({
+      time: "10:53",
+      project: "js/agentlog",
+      cwd: "/Users/pray/work/js/agentlog",
+    });
+    const entry2 = makeEntry({
+      time: "15:00",
+      project: "kotlin/my-project",
+      cwd: "/Users/pray/work/kotlin/my-project",
+    });
+    appendEntry(config, entry1, TEST_DATE);
+    appendEntry(config, entry2, TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("#### js/agentlog · 10:53");
+    expect(content).toContain("#### kotlin/my-project · 15:00");
+  });
+
+  // N7: > 🕐 latest line always reflects the most recent entry
+  it("updates > 🕐 latest line to the most recent entry on each write", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    appendEntry(config, makeEntry({ time: "10:53", prompt: "첫 번째" }), TEST_DATE);
+    appendEntry(config, makeEntry({ time: "11:07", prompt: "두 번째" }), TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    // Only the latest entry appears in > 🕐
+    expect(content).toContain("> 🕐 11:07 — js/agentlog › 두 번째");
+    expect(content).not.toContain("> 🕐 10:53");
+  });
+
+  // N8: project header preserves original start time when session updates
+  it("preserves original project start time in header when session changes", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    appendEntry(config, makeEntry({ time: "10:53", sessionId: "session1-aaaa-bbbb-cccc-dddddddddddd" }), TEST_DATE);
+    appendEntry(config, makeEntry({ time: "15:00", sessionId: "session2-xxxx-yyyy-zzzz-111111111111" }), TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    // Header should still show 10:53 (first entry time), not 15:00
+    expect(content).toContain("#### js/agentlog · 10:53");
+    expect(content).not.toContain("#### js/agentlog · 15:00");
+  });
+
+  // N9: ## AgentLog already exists → append project section inside it
+  it("appends to existing ## AgentLog section", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(
+      filePath,
+      "# 2026-03-01\n\n## AgentLog\n> 🕐 09:00 — js/old › old entry\n\n#### js/old · 09:00 <!-- cwd=/old/path ses=abc00000 -->\n- 09:00 old entry\n",
+      "utf-8"
+    );
+
+    const entry = makeEntry({ time: "10:53" });
+    appendEntry(config, entry, TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("#### js/old · 09:00");
+    expect(content).toContain("#### js/agentlog · 10:53");
+    expect(content).toContain("- 09:00 old entry");
+    expect(content).toContain("- 10:53 테스트 작업");
+  });
+
+  // N10: empty file
+  it("handles empty file without crashing", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, "", "utf-8");
+
+    const entry = makeEntry();
+    expect(() => appendEntry(config, entry, TEST_DATE)).not.toThrow();
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("## AgentLog");
+    expect(content).toContain("- 10:53 테스트 작업");
+  });
+
+  // N11: WriteResult fields
+  it("returns section=agentlog and correct filePath", () => {
+    const entry = makeEntry();
+    const result = appendEntry(config, entry, TEST_DATE);
+    expect(result.section).toBe("agentlog");
+    expect(result.filePath).toContain("2026-03-01-일.md");
+  });
+
+  // N12: section header contains cwd and sessionShort
+  it("embeds full cwd and session short in section header comment", () => {
+    const entry = makeEntry();
+    appendEntry(config, entry, TEST_DATE);
+
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
+  });
+
+  // N13: cwd with spaces — section matching must not break
+  it("handles cwd with spaces in path correctly", () => {
+    const entry = makeEntry({
+      cwd: "/Users/John Doe/work/js/agentlog",
+      project: "js/agentlog",
+    });
+    appendEntry(config, entry, TEST_DATE);
+
+    // Second entry with same cwd — should go into the same section, not a new one
+    const entry2 = makeEntry({
+      time: "11:00",
+      prompt: "두 번째 작업",
+      cwd: "/Users/John Doe/work/js/agentlog",
+      project: "js/agentlog",
+    });
+    appendEntry(config, entry2, TEST_DATE);
+
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    const content = readFileSync(filePath, "utf-8");
+    // Should have only one #### section (not two)
+    const sections = content.split("#### ");
+    expect(sections.length).toBe(2);
+    expect(content).toContain("<!-- cwd=/Users/John Doe/work/js/agentlog ses=abc12345 -->");
+    expect(content).toContain("- 10:53 테스트 작업");
+    expect(content).toContain("- 11:00 두 번째 작업");
+  });
+
+  // N14: 3 entries in same session — all appended in order within the section
+  it("appends three entries in same session in insertion order", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    appendEntry(config, makeEntry({ time: "10:00", prompt: "첫 번째" }), TEST_DATE);
+    appendEntry(config, makeEntry({ time: "10:30", prompt: "두 번째" }), TEST_DATE);
+    appendEntry(config, makeEntry({ time: "11:00", prompt: "세 번째" }), TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    // Only one #### section
+    expect(content.split("#### ").length).toBe(2);
+    // No session dividers
+    expect(content).not.toContain("- - - -");
+    // All three entries present
+    expect(content).toContain("- 10:00 첫 번째");
+    expect(content).toContain("- 10:30 두 번째");
+    expect(content).toContain("- 11:00 세 번째");
+    // Ordering: 첫 번째 before 두 번째 before 세 번째
+    const idx1 = content.indexOf("- 10:00 첫 번째");
+    const idx2 = content.indexOf("- 10:30 두 번째");
+    const idx3 = content.indexOf("- 11:00 세 번째");
+    expect(idx1).toBeLessThan(idx2);
+    expect(idx2).toBeLessThan(idx3);
   });
 });
 
@@ -295,24 +322,20 @@ describe("appendEntry — plain mode", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  // N11: plain mode file path
   it("writes to {vault}/YYYY-MM-DD.md in plain mode", () => {
-    const entry: LogEntry = { time: "10:53", prompt: "plain test" };
+    const entry = makeEntry();
     const result = appendEntry(config, entry, TEST_DATE);
-
     expect(result.filePath).toBe(join(tmpDir, "2026-03-01.md"));
   });
 
-  // N15: WriteResult.section === "plain"
   it("returns section=plain in plain mode", () => {
-    const entry: LogEntry = { time: "10:53", prompt: "plain section" };
+    const entry = makeEntry();
     const result = appendEntry(config, entry, TEST_DATE);
-
     expect(result.section).toBe("plain");
   });
 
   it("creates file with header and entry when file does not exist", () => {
-    const entry: LogEntry = { time: "10:53", prompt: "plain 신규 파일" };
+    const entry = makeEntry({ prompt: "plain 신규 파일" });
     const result = appendEntry(config, entry, TEST_DATE);
 
     expect(result.created).toBe(true);
@@ -321,11 +344,11 @@ describe("appendEntry — plain mode", () => {
     expect(content).toContain("- 10:53 plain 신규 파일");
   });
 
-  it("appends to existing plain file without creating duplicate header", () => {
+  it("appends to existing plain file without duplicate header", () => {
     const filePath = join(tmpDir, "2026-03-01.md");
     writeFileSync(filePath, "# 2026-03-01\n- 09:00 기존 항목\n", "utf-8");
 
-    const entry: LogEntry = { time: "10:53", prompt: "추가 항목" };
+    const entry = makeEntry({ time: "10:53", prompt: "추가 항목" });
     appendEntry(config, entry, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");

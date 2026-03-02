@@ -9,6 +9,7 @@
 
 import { loadConfig } from "./config.js";
 import { parseHookInput } from "./schema/hook-input.js";
+import { cwdToProject } from "./schema/daily-note.js";
 import { appendEntry } from "./note-writer.js";
 
 /** Read all stdin as a string. Works with both Bun and Node.js. */
@@ -51,6 +52,9 @@ async function main(): Promise<void> {
   const entry = {
     time,
     prompt: parsed.prompt.slice(0, 100),
+    sessionId: parsed.sessionId,
+    project: cwdToProject(parsed.cwd),
+    cwd: parsed.cwd,
   };
 
   try {

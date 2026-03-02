@@ -5,6 +5,48 @@
  */
 
 import { spawnSync } from "child_process";
+import { existsSync } from "fs";
+
+/** Known macOS paths where Obsidian CLI binary may live (PATH may not include these). */
+const MACOS_CLI_PATHS = [
+  "/Applications/Obsidian.app/Contents/MacOS/obsidian",
+];
+
+/** Cached resolved binary path (null = not yet resolved, "" = not found). */
+let _cachedBin: string | null = null;
+
+/**
+ * Resolve the `obsidian` CLI binary path.
+ * Tries `which obsidian` first, then known macOS paths.
+ */
+export function resolveCliBin(): string | null {
+  if (_cachedBin !== null) return _cachedBin || null;
+
+  const which = spawnSync("which", ["obsidian"], { encoding: "utf-8", timeout: 3000 });
+  if (which.status === 0 && which.stdout.trim()) {
+    _cachedBin = which.stdout.trim();
+    return _cachedBin;
+  }
+
+  if (process.platform === "darwin") {
+    for (const p of MACOS_CLI_PATHS) {
+      if (existsSync(p)) {
+        _cachedBin = p;
+        return _cachedBin;
+      }
+    }
+  }
+
+  _cachedBin = "";
+  return null;
+}
+
+/** Spawn obsidian CLI with resolved binary path. Returns null if binary not found. */
+function obsidianSync(args: string[], timeout: number) {
+  const bin = resolveCliBin();
+  if (!bin) return null;
+  return spawnSync(bin, args, { encoding: "utf-8", timeout });
+}
 
 /** Result of probing the Obsidian CLI environment */
 export interface ObsidianCliStatus {
@@ -61,31 +103,23 @@ export function probeObsidianCli(): ObsidianCliStatus {
     responsive: false,
   };
 
-  // 1. Check if `obsidian` binary exists in PATH
-  const which = spawnSync("which", ["obsidian"], {
-    encoding: "utf-8",
-    timeout: CLI_TIMEOUT_MS,
-  });
-  if (which.status !== 0) return result;
+  // 1. Resolve binary (PATH + macOS fallback paths)
+  const bin = resolveCliBin();
+  if (!bin) return result;
 
   result.installed = true;
-  result.binPath = which.stdout.trim();
+  result.binPath = bin;
 
-  // 2. Get version
-  const ver = spawnSync("obsidian", ["version"], {
-    encoding: "utf-8",
-    timeout: CLI_TIMEOUT_MS,
-  });
-  if (ver.status === 0 && ver.stdout.trim()) {
-    result.version = ver.stdout.trim();
+  // 2. Get version (stdout may contain warning lines; take last non-empty line)
+  const ver = obsidianSync(["version"], CLI_TIMEOUT_MS);
+  if (ver && ver.status === 0 && ver.stdout.trim()) {
+    const lines = ver.stdout.trim().split("\n").filter(Boolean);
+    result.version = (lines.at(-1) ?? "").trim() || null;
   }
 
   // 3. Check if app is responsive (daily:path is a lightweight read-only command)
-  const probe = spawnSync("obsidian", ["daily:path"], {
-    encoding: "utf-8",
-    timeout: CLI_TIMEOUT_MS,
-  });
-  result.responsive = probe.status === 0;
+  const probe = obsidianSync(["daily:path"], CLI_TIMEOUT_MS);
+  result.responsive = probe?.status === 0;
 
   return result;
 }
@@ -95,10 +129,24 @@ export function probeObsidianCli(): ObsidianCliStatus {
  * Command: obsidian daily:append content="..."
  */
 export function cliDailyAppend(content: string): CliWriteResult {
-  const proc = spawnSync("obsidian", ["daily:append", `content=${content}`], {
-    encoding: "utf-8",
-    timeout: CLI_WRITE_TIMEOUT_MS,
-  });
+  const proc = obsidianSync(["daily:append", `content=${content}`], CLI_WRITE_TIMEOUT_MS);
+  if (!proc) return { success: false, stdout: "", stderr: "obsidian binary not found" };
+
+  return {
+    success: proc.status === 0,
+    stdout: (proc.stdout ?? "").trim(),
+    stderr: (proc.stderr ?? "").trim(),
+  };
+}
+
+/**
+ * Open (and create if missing) today's Daily Note via Obsidian CLI.
+ * Command: obsidian daily
+ * This triggers Obsidian's daily note template when the note doesn't exist yet.
+ */
+export function cliDailyCreate(): CliWriteResult {
+  const proc = obsidianSync(["daily"], CLI_WRITE_TIMEOUT_MS);
+  if (!proc) return { success: false, stdout: "", stderr: "obsidian binary not found" };
 
   return {
     success: proc.status === 0,
@@ -112,11 +160,8 @@ export function cliDailyAppend(content: string): CliWriteResult {
  * Returns null if CLI is unavailable or read fails.
  */
 export function cliDailyRead(): string | null {
-  const proc = spawnSync("obsidian", ["daily:read"], {
-    encoding: "utf-8",
-    timeout: CLI_TIMEOUT_MS,
-  });
-  if (proc.status !== 0) return null;
+  const proc = obsidianSync(["daily:read"], CLI_TIMEOUT_MS);
+  if (!proc || proc.status !== 0) return null;
   return proc.stdout ?? null;
 }
 
@@ -125,10 +170,7 @@ export function cliDailyRead(): string | null {
  * Returns null if CLI is unavailable.
  */
 export function cliDailyPath(): string | null {
-  const proc = spawnSync("obsidian", ["daily:path"], {
-    encoding: "utf-8",
-    timeout: CLI_TIMEOUT_MS,
-  });
-  if (proc.status !== 0) return null;
+  const proc = obsidianSync(["daily:path"], CLI_TIMEOUT_MS);
+  if (!proc || proc.status !== 0) return null;
   return (proc.stdout ?? "").trim() || null;
 }

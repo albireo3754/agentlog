@@ -4,6 +4,11 @@ import {
   findTimeBlock,
   buildLogLine,
   KO_DAYS,
+  cwdToProject,
+  buildAgentLogEntry,
+  buildSessionDivider,
+  buildLatestLine,
+  buildProjectHeader,
 } from "../schema/daily-note.js";
 
 describe("dailyNoteFileName", () => {
@@ -91,5 +96,69 @@ describe("buildLogLine", () => {
   it("handles Korean text in prompt", () => {
     const line = buildLogLine("10:53", "agentlog 개발을 위해서 작업 진행");
     expect(line).toBe("  - 10:53 agentlog 개발을 위해서 작업 진행");
+  });
+});
+
+describe("cwdToProject", () => {
+  it("returns parent/basename for standard work path", () => {
+    expect(cwdToProject("/Users/pray/work/js/agentlog")).toBe("js/agentlog");
+  });
+
+  it("returns parent/basename for another language path", () => {
+    expect(cwdToProject("/Users/pray/work/kotlin/my-project")).toBe("kotlin/my-project");
+  });
+
+  it("returns parent/basename for worktree path", () => {
+    expect(cwdToProject("/Users/pray/worktrees/feature-branch/app")).toBe("feature-branch/app");
+  });
+
+  it("returns basename only when single segment", () => {
+    expect(cwdToProject("/agentlog")).toBe("agentlog");
+  });
+
+  it("strips trailing slash", () => {
+    expect(cwdToProject("/Users/pray/work/js/agentlog/")).toBe("js/agentlog");
+  });
+});
+
+describe("buildAgentLogEntry", () => {
+  it("formats entry as '- HH:MM prompt'", () => {
+    expect(buildAgentLogEntry("10:53", "hello world")).toBe("- 10:53 hello world");
+  });
+
+  it("handles Korean text", () => {
+    expect(buildAgentLogEntry("10:53", "작업 진행")).toBe("- 10:53 작업 진행");
+  });
+});
+
+describe("buildSessionDivider", () => {
+  it("returns divider with first 8 chars of sessionId", () => {
+    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890")).toBe("- - - - (ses_abc12345)");
+  });
+
+  it("uses full sessionId when shorter than 8 chars", () => {
+    expect(buildSessionDivider("abc")).toBe("- - - - (ses_abc)");
+  });
+});
+
+describe("buildLatestLine", () => {
+  it("formats latest line blockquote", () => {
+    expect(buildLatestLine("17:32", "kotlin/my-project", "API 응답 수정")).toBe(
+      "> 🕐 17:32 — kotlin/my-project › API 응답 수정"
+    );
+  });
+});
+
+describe("buildProjectHeader", () => {
+  it("formats project header with cwd and sessionShort", () => {
+    expect(
+      buildProjectHeader("js/agentlog", "10:53", "/Users/pray/work/js/agentlog", "abc12345")
+    ).toBe("#### js/agentlog · 10:53 <!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
+  });
+
+  it("handles cwd with spaces correctly", () => {
+    expect(
+      buildProjectHeader("js/agentlog", "10:53", "/Users/John Doe/work/js/agentlog", "abc12345")
+    ).toBe("#### js/agentlog · 10:53 <!-- cwd=/Users/John Doe/work/js/agentlog ses=abc12345 -->");
   });
 });

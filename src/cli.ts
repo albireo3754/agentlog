@@ -14,7 +14,7 @@ import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { saveConfig, loadConfig, expandHome } from "./config.js";
 import { detectVaults, detectCli } from "./detect.js";
-import { isVersionAtLeast, MIN_CLI_VERSION } from "./obsidian-cli.js";
+import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin } from "./obsidian-cli.js";
 import * as readline from "readline";
 
 const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
@@ -401,7 +401,13 @@ async function cmdDoctor(): Promise<void> {
     );
   }
 
-  // 3. Obsidian app installed (macOS only, skip for plain mode)
+  // 3. Write mode
+  if (config) {
+    const mode = config.writeMode ?? "auto";
+    check("writeMode", true, mode, undefined);
+  }
+
+  // 4. Obsidian app installed (macOS only, skip for plain mode)
   if (process.platform === "darwin" && (!config || !config.plain)) {
     const obsidianPaths = [
       "/Applications/Obsidian.app",
@@ -416,22 +422,23 @@ async function cmdDoctor(): Promise<void> {
     );
   }
 
-  // 4. Obsidian CLI checks (warn-only, skip for plain mode)
+  // 5. Obsidian CLI checks (warn-only, skip for plain mode)
   if (!config || !config.plain) {
-    const cliWhich = spawnSync("which", ["obsidian"], { encoding: "utf-8", timeout: 3000 });
-    const cliBinPath = cliWhich.status === 0 ? cliWhich.stdout.trim() : "";
+    const cliBinPath = resolveCliBin();
     check(
       "cli",
       !!cliBinPath,
-      cliBinPath || "not found in PATH",
+      cliBinPath || "not found",
       "Enable CLI in Obsidian Settings > General, then register in PATH",
       true
     );
 
     if (cliBinPath) {
-      // 4a. CLI version + minimum version check
-      const cliVer = spawnSync("obsidian", ["version"], { encoding: "utf-8", timeout: 3000 });
-      const version = cliVer.status === 0 ? cliVer.stdout.trim() : "";
+      // 5a. CLI version + minimum version check
+      const cliVer = spawnSync(cliBinPath, ["version"], { encoding: "utf-8", timeout: 3000 });
+      // stdout may contain warning lines before the version; take the last non-empty line
+      const versionLines = (cliVer.stdout ?? "").trim().split("\n").filter(Boolean);
+      const version = cliVer.status === 0 ? (versionLines.at(-1) ?? "").trim() : "";
       if (version) {
         const meetsMin = isVersionAtLeast(version, MIN_CLI_VERSION);
         check(
@@ -445,8 +452,8 @@ async function cmdDoctor(): Promise<void> {
         check("cli-ver", false, "could not determine version", "Ensure Obsidian app is running", true);
       }
 
-      // 4b. CLI responsive (app running + can communicate)
-      const cliProbe = spawnSync("obsidian", ["daily:path"], { encoding: "utf-8", timeout: 3000 });
+      // 5b. CLI responsive (app running + can communicate)
+      const cliProbe = spawnSync(cliBinPath, ["daily:path"], { encoding: "utf-8", timeout: 3000 });
       check(
         "cli-app",
         cliProbe.status === 0,
@@ -454,10 +461,23 @@ async function cmdDoctor(): Promise<void> {
         "Start Obsidian app, or check CLI settings",
         true
       );
+
+      // 5c. Daily note status (only when CLI is responsive)
+      if (cliProbe.status === 0) {
+        const dailyRead = spawnSync(cliBinPath, ["daily:read"], { encoding: "utf-8", timeout: 3000 });
+        const noteExists = dailyRead.status === 0 && (dailyRead.stdout ?? "").trim().length > 0;
+        check(
+          "daily",
+          noteExists,
+          noteExists ? "today's note exists" : "today's note not found (will be created on first log)",
+          undefined,
+          true
+        );
+      }
     }
   }
 
-  // 5. Hook registered
+  // 6. Hook registered
   const hookOk = isHookRegistered();
   check(
     "hook",

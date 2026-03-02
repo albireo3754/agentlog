@@ -2,12 +2,12 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import type { AgentLogConfig, LogEntry, WriteResult } from "./types.js";
 import {
-  KO_DAYS,
-  findTimeBlock,
-  buildLogLine,
   dailyNoteFileName,
+  buildAgentLogEntry,
+  buildSessionDivider,
+  buildLatestLine,
+  buildProjectHeader,
 } from "./schema/daily-note.js";
-import { cliDailyAppend } from "./obsidian-cli.js";
 
 /** Zero-pads a number to 2 digits. */
 function pad2(n: number): string {
@@ -26,36 +26,13 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string {
 }
 
 /**
- * Attempt CLI daily:append. Returns WriteResult on success, null on failure.
- * Catches all errors (timeout, spawn failure) to maintain fail-silent contract.
- */
-function tryCliAppend(entryLine: string): WriteResult | null {
-  try {
-    const result = cliDailyAppend(entryLine);
-    if (result.success) {
-      return {
-        filePath: "(via obsidian cli)",
-        created: false,
-        section: "cli",
-      };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Appends a log entry to the Daily Note.
  *
- * Write strategy (controlled by config.writeMode):
- *   "auto" (default): try CLI first, fallback to file write
- *   "cli":  prefer CLI, fallback to file write on failure
- *   "file": file write only (current behavior)
- *
- * - Finds the matching timeblock line and inserts after it (and any existing entries in that block).
- * - Falls back to an ## AgentLog section at end of file.
- * - Creates the file if it doesn't exist.
+ * For plain mode: simple append (unchanged behavior).
+ * For normal mode: session-grouped ## AgentLog section.
+ *   - Groups entries by project (derived from cwd).
+ *   - Inserts session divider when session_id changes within a project.
+ *   - Keeps a pinned "> 🕐" latest-entry line at the top of ## AgentLog.
  */
 export function appendEntry(
   config: AgentLogConfig,
@@ -63,116 +40,145 @@ export function appendEntry(
   date: Date = new Date()
 ): WriteResult {
   const filePath = dailyNotePath(config, date);
-  const entryLine = buildLogLine(entry.time, entry.prompt);
-  const mode = config.writeMode ?? "auto";
 
-  // Plain mode: always use file write (CLI daily:append doesn't support custom paths)
   if (config.plain) {
     return appendPlain(filePath, entry, date);
   }
 
-  // CLI path
-  if (mode === "cli" || mode === "auto") {
-    const cliResult = tryCliAppend(entryLine);
-    if (cliResult) return cliResult;
-    if (mode === "cli") {
-      process.stderr.write("[agentlog] CLI write failed, falling back to file write\n");
-    }
-  }
-
-  // File write path (existing logic)
   const created = !existsSync(filePath);
-
   if (created) {
     mkdirSync(dirname(filePath), { recursive: true });
-    const content = buildAgentLogSection([entryLine]);
-    writeFileSync(filePath, content, "utf-8");
-    return { filePath, created: true, section: "agentlog" };
   }
 
-  const content = readFileSync(filePath, "utf-8");
-  const lines = content.split("\n");
-
-  const hour = parseInt(entry.time.split(":")[0], 10);
-  const blockLabel = findTimeBlock(hour); // e.g. "10 - 12"
-
-  if (blockLabel) {
-    const blockIdx = findTimeBlockLine(lines, blockLabel);
-
-    if (blockIdx !== -1) {
-      // Insert after existing indented entries under this block
-      let insertIdx = blockIdx + 1;
-      while (
-        insertIdx < lines.length &&
-        lines[insertIdx].startsWith("  ")
-      ) {
-        insertIdx++;
-      }
-      lines.splice(insertIdx, 0, entryLine);
-      writeFileSync(filePath, lines.join("\n"), "utf-8");
-      return { filePath, created: false, section: "timeblock" };
-    }
-  }
-
-  // No matching timeblock found — use ## AgentLog section
-  return appendToAgentLogSection(filePath, lines, entryLine);
+  const content = created ? "" : readFileSync(filePath, "utf-8");
+  const newContent = insertIntoAgentLogSection(content, entry);
+  writeFileSync(filePath, newContent, "utf-8");
+  return { filePath, created, section: "agentlog" };
 }
 
 /**
- * Finds the index of the timeblock checkbox line matching the given label.
- * Matches both checked and unchecked, and handles zero-padded vs non-padded hours.
- * E.g. blockLabel "8 - 10" matches "- [ ] 08 - 10" or "- [ ] 8 - 10"
+ * Insert entry into ## AgentLog section with session-grouped subsections.
+ *
+ * Output structure:
+ *   ## AgentLog
+ *   > 🕐 HH:MM — project › prompt        ← latest entry (always updated)
+ *
+ *   #### project · HH:MM <!-- cwd ses --> ← one section per cwd
+ *   - HH:MM entry
+ *   - - - - (ses_XXXXXXXX)               ← divider when session changes
+ *   - HH:MM entry
  */
-function findTimeBlockLine(lines: string[], blockLabel: string): number {
-  // Parse start/end from the schema label (e.g. "8 - 10" → [8, 10])
-  const parts = blockLabel.split(" - ");
-  if (parts.length !== 2) return -1;
-  const labelStart = parseInt(parts[0], 10);
-  const labelEnd = parseInt(parts[1], 10);
+function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
+  const sessionShort = entry.sessionId.slice(0, 8);
+  const entryLine = buildAgentLogEntry(entry.time, entry.prompt);
+  const latestLine = buildLatestLine(entry.time, entry.project, entry.prompt);
 
-  // Regex: "- [ ] HH - HH" or "- [x] HH - HH" (any padding)
-  const re = /^-\s+\[[ x]\]\s+(\d{1,2})\s+-\s+(\d{1,2})$/;
+  const lines = content.split("\n");
 
-  return lines.findIndex((l) => {
-    const m = l.trim().match(re);
-    if (!m) return false;
-    return parseInt(m[1], 10) === labelStart && parseInt(m[2], 10) === labelEnd;
-  });
-}
-
-/** Appends to ## AgentLog section, or creates it at end of file. */
-function appendToAgentLogSection(
-  filePath: string,
-  lines: string[],
-  entryLine: string
-): WriteResult {
-  const sectionIdx = lines.findIndex((l) => l.trim() === "## AgentLog");
-
-  if (sectionIdx !== -1) {
-    // Insert before the next ## heading or at end of file
-    let insertIdx = sectionIdx + 1;
-    while (insertIdx < lines.length && !lines[insertIdx].startsWith("## ")) {
-      insertIdx++;
-    }
-    lines.splice(insertIdx, 0, entryLine);
-  } else {
-    // Append new section at end
-    if (lines[lines.length - 1] !== "") {
+  // 1. Find or create ## AgentLog
+  let agentLogIdx = lines.findIndex((l) => l === "## AgentLog");
+  if (agentLogIdx === -1) {
+    if (lines.length > 0 && lines[lines.length - 1] !== "") {
       lines.push("");
     }
-    lines.push("## AgentLog", entryLine);
+    lines.push("## AgentLog");
+    agentLogIdx = lines.length - 1;
   }
 
-  writeFileSync(filePath, lines.join("\n"), "utf-8");
-  return { filePath, created: false, section: "agentlog" };
+  // Find end of ## AgentLog section (next ## heading or EOF)
+  let agentLogEnd = lines.length;
+  for (let i = agentLogIdx + 1; i < lines.length; i++) {
+    if (/^## [^#]/.test(lines[i])) {
+      agentLogEnd = i;
+      break;
+    }
+  }
+
+  // 2. Find > 🕐 latest line (first non-blank line after ## AgentLog)
+  let latestLineIdx = -1;
+  for (let i = agentLogIdx + 1; i < agentLogEnd; i++) {
+    if (lines[i] === "") continue;
+    if (lines[i].startsWith("> 🕐")) {
+      latestLineIdx = i;
+    }
+    break; // only check the first non-blank line
+  }
+
+  // 3. Find #### project subsection matching entry.cwd
+  // Header format: "#### project · HH:MM <!-- cwd=<path> ses=<sessionShort> -->"
+  // Structured format handles cwd paths that contain spaces.
+  const projectHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=(\w+) -->$/;
+  let projectIdx = -1;
+  let storedSes = "";
+  let existingTime = entry.time;
+
+  for (let i = agentLogIdx + 1; i < agentLogEnd; i++) {
+    const m = lines[i].match(projectHeaderRe);
+    if (!m) continue;
+    const [, storedCwd, commentSes] = m;
+    if (storedCwd !== entry.cwd) continue;
+    projectIdx = i;
+    storedSes = commentSes;
+    // Preserve the original start time from the existing header
+    const timeMatch = lines[i].match(/· (\d{2}:\d{2}) /);
+    if (timeMatch) existingTime = timeMatch[1];
+    break;
+  }
+
+  // 4. Insert entry
+  if (projectIdx === -1) {
+    // New project: create #### section at end of ## AgentLog
+    const header = buildProjectHeader(entry.project, entry.time, entry.cwd, sessionShort);
+    const prevLine = lines[agentLogEnd - 1];
+    const newSection: string[] = [];
+    if (prevLine !== "" && prevLine !== "## AgentLog") {
+      newSection.push("");
+    }
+    newSection.push(header, entryLine);
+    lines.splice(agentLogEnd, 0, ...newSection);
+  } else {
+    // Existing project: find end of this subsection
+    let subsectionEnd = agentLogEnd;
+    for (let i = projectIdx + 1; i < agentLogEnd; i++) {
+      if (lines[i].startsWith("#### ")) {
+        subsectionEnd = i;
+        break;
+      }
+    }
+
+    // Insert before trailing blank lines
+    let insertAt = subsectionEnd;
+    while (insertAt > projectIdx + 1 && lines[insertAt - 1] === "") {
+      insertAt--;
+    }
+
+    if (storedSes !== sessionShort) {
+      // Session changed: insert divider + entry, update header session
+      lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId), entryLine);
+      lines[projectIdx] = buildProjectHeader(entry.project, existingTime, entry.cwd, sessionShort);
+    } else {
+      lines.splice(insertAt, 0, entryLine);
+    }
+  }
+
+  // 5. Update > 🕐 latest line
+  // Note: latestLineIdx is always before insertAt, so it's unaffected by the splice above.
+  if (latestLineIdx !== -1) {
+    lines[latestLineIdx] = latestLine;
+  } else {
+    // Insert after ## AgentLog
+    if (lines[agentLogIdx + 1] === "") {
+      lines.splice(agentLogIdx + 1, 0, latestLine);
+    } else {
+      lines.splice(agentLogIdx + 1, 0, latestLine, "");
+    }
+  }
+
+  return lines.join("\n");
 }
 
-/** Plain mode: simple append without timeblock parsing. */
-function appendPlain(
-  filePath: string,
-  entry: LogEntry,
-  date: Date
-): WriteResult {
+/** Plain mode: simple append without session grouping. */
+function appendPlain(filePath: string, entry: LogEntry, date: Date): WriteResult {
   const created = !existsSync(filePath);
 
   if (created) {
@@ -191,9 +197,4 @@ function appendPlain(
     : content + `\n- ${entry.time} ${entry.prompt}\n`;
   writeFileSync(filePath, appended, "utf-8");
   return { filePath, created: false, section: "plain" };
-}
-
-/** Builds file content with just an AgentLog section. */
-function buildAgentLogSection(entryLines: string[]): string {
-  return ["## AgentLog", ...entryLines, ""].join("\n");
 }

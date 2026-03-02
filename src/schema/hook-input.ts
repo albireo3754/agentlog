@@ -26,6 +26,10 @@ export interface HookInput {
   hook_event_name: "UserPromptSubmit";
   session_id: string;
   cwd: string;
+  /** Path to the session transcript JSONL file */
+  transcript_path?: string;
+  /** Claude Code permission mode (e.g. "default", "acceptEdits") */
+  permission_mode?: string;
   /** Direct prompt text — preferred source */
   prompt?: string;
   /** Nested message object — fallback if prompt is absent */

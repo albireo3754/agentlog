@@ -8,6 +8,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
+import { resolveCliBin } from "./obsidian-cli.js";
 
 export interface DetectedVault {
   path: string;
@@ -72,20 +73,17 @@ export interface CliDetection {
 
 /** Detect Obsidian CLI availability. Lightweight — no app-running check. */
 export function detectCli(): CliDetection {
-  const which = spawnSync("which", ["obsidian"], {
-    encoding: "utf-8",
-    timeout: 3000,
-  });
-  if (which.status !== 0) {
+  const binPath = resolveCliBin();
+  if (!binPath) {
     return { installed: false, binPath: null, version: null };
   }
 
-  const binPath = which.stdout.trim();
-  const ver = spawnSync("obsidian", ["version"], {
+  const ver = spawnSync(binPath, ["version"], {
     encoding: "utf-8",
     timeout: 3000,
   });
-  const version = ver.status === 0 ? ver.stdout.trim() || null : null;
+  const versionLines = (ver.stdout ?? "").trim().split("\n").filter(Boolean);
+  const version = ver.status === 0 ? (versionLines.at(-1) ?? "").trim() || null : null;
 
   return { installed: true, binPath, version };
 }
