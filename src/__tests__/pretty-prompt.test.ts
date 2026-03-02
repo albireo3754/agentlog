@@ -85,14 +85,13 @@ describe("prettyPrompt", () => {
     expect(prettyPrompt("```typescript\nconst x = 1;\n```")).toBe("const x = 1;");
   });
 
-  it("truncates long prompts with ellipsis", () => {
+  it("returns full text for long prompts (no truncation)", () => {
     const long = "a".repeat(200);
     const result = prettyPrompt(long)!;
-    expect(result.length).toBe(120);
-    expect(result.endsWith("…")).toBe(true);
+    expect(result.length).toBe(200);
   });
 
-  it("returns null for empty/whitespace input", () => {
+it("returns null for empty/whitespace input", () => {
     expect(prettyPrompt("")).toBeNull();
     expect(prettyPrompt("   \n  ")).toBeNull();
   });

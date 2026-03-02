@@ -4,6 +4,7 @@ dist/
 .omc/project-memory.json
 .omc/sessions
 # .omc/plans
+.omc/scientist
 .omc/handoffs
 .omx/
 *.tsbuildinfo

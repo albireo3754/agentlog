@@ -7,8 +7,6 @@
  * Returns null when the prompt should not be logged (system noise).
  */
 
-const MAX_LENGTH = 120;
-
 /** Prompts matching these are system/framework noise — skip entirely. */
 const SKIP_PATTERNS: RegExp[] = [
   /^\[Request interrupted/,
@@ -73,11 +71,6 @@ export function prettyPrompt(raw: string): string | null {
 
   // 11. Too short after cleanup = noise
   if (text.length < 2) return null;
-
-  // 12. Truncate with ellipsis
-  if (text.length > MAX_LENGTH) {
-    text = text.slice(0, MAX_LENGTH - 1) + "…";
-  }
 
   return text;
 }
