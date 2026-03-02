@@ -68,8 +68,10 @@ export function cliDailyPath(): string | null {
   if (!bin) return null;
   const result = spawnSync(bin, ["daily:path"], { encoding: "utf-8", timeout: 3000 });
   if (result.status !== 0) return null;
-  // stdout may contain warning lines on stderr; stdout has the path
-  const path = result.stdout.trim();
+  // stdout may contain Electron noise lines (e.g. "Loading updated app package",
+  // version warnings). The actual path is always the last non-empty line.
+  const lines = result.stdout.trim().split("\n").filter(Boolean);
+  const path = (lines.at(-1) ?? "").trim();
   return path || null;
 }
 
