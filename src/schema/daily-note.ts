@@ -87,10 +87,10 @@ export function cwdToProject(cwd: string): string {
 
 /**
  * Entry line within a #### project section.
- * Format: "- HH:MM prompt (max 100 chars)"
+ * Format: "- HH:MM prompt"
  */
 export function buildAgentLogEntry(time: string, prompt: string): string {
-  return `- ${time} ${prompt.slice(0, 100)}`;
+  return `- ${time} ${prompt}`;
 }
 
 /**

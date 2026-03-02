@@ -10,6 +10,7 @@
 import { loadConfig } from "./config.js";
 import { parseHookInput } from "./schema/hook-input.js";
 import { cwdToProject } from "./schema/daily-note.js";
+import { prettyPrompt } from "./schema/pretty-prompt.js";
 import { appendEntry } from "./note-writer.js";
 
 /** Read all stdin as a string. Works with both Bun and Node.js. */
@@ -48,10 +49,14 @@ async function main(): Promise<void> {
   const mm = String(now.getMinutes()).padStart(2, "0");
   const time = `${hh}:${mm}`;
 
-  // 5. Append entry to Daily Note
+  // 5. Sanitize prompt — skip system noise
+  const prompt = prettyPrompt(parsed.prompt);
+  if (!prompt) return;
+
+  // 6. Append entry to Daily Note
   const entry = {
     time,
-    prompt: parsed.prompt.slice(0, 100),
+    prompt,
     sessionId: parsed.sessionId,
     project: cwdToProject(parsed.cwd),
     cwd: parsed.cwd,

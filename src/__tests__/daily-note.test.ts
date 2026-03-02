@@ -79,18 +79,11 @@ describe("buildLogLine", () => {
     expect(buildLogLine("10:53", "hello world")).toBe("  - 10:53 hello world");
   });
 
-  // L2: truncates prompt at 100 chars
-  it("truncates prompt to 100 characters", () => {
+  // L2: passes prompt through without truncation (prettyPrompt handles truncation)
+  it("passes long prompt through without truncation", () => {
     const long = "a".repeat(150);
     const line = buildLogLine("11:00", long);
-    expect(line).toBe("  - 11:00 " + "a".repeat(100));
-  });
-
-  // L3: exact 100 chars not truncated
-  it("keeps prompt of exactly 100 chars unchanged", () => {
-    const exact = "b".repeat(100);
-    const line = buildLogLine("11:00", exact);
-    expect(line).toBe("  - 11:00 " + exact);
+    expect(line).toBe("  - 11:00 " + long);
   });
 
   // L4: Korean text

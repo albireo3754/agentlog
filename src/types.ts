@@ -16,7 +16,7 @@ export interface AgentLogConfig {
 /** A single log entry to be written into a Daily Note */
 export interface LogEntry {
   time: string;     // "HH:MM"
-  prompt: string;   // first 100 chars of user prompt
+  prompt: string;   // sanitized by prettyPrompt()
   sessionId: string; // from hook session_id
   project: string;  // derived from cwd: parent/basename
   cwd: string;      // full cwd path, used as section matching key

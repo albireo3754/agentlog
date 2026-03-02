@@ -96,24 +96,4 @@ describe("parseHookInput", () => {
   });
 });
 
-describe("prompt truncation (hook behavior)", () => {
-  // H4: prompt > 100 chars truncated
-  it("truncation to 100 chars is correct", () => {
-    const longPrompt = "a".repeat(150);
-    const truncated = longPrompt.slice(0, 100);
-    expect(truncated.length).toBe(100);
-    expect(truncated).toBe("a".repeat(100));
-  });
-
-  // H5: prompt exactly 100 chars — no change
-  it("prompt exactly 100 chars is preserved as-is", () => {
-    const exact = "b".repeat(100);
-    expect(exact.slice(0, 100)).toBe(exact);
-    expect(exact.slice(0, 100).length).toBe(100);
-  });
-
-  // H6: empty prompt
-  it("empty prompt slices to empty string without error", () => {
-    expect("".slice(0, 100)).toBe("");
-  });
-});
+// Prompt truncation is now handled by prettyPrompt() — see pretty-prompt.test.ts
