@@ -37,7 +37,7 @@ Claude Code prompt → UserPromptSubmit hook → Daily Note append
 |---------|------|
 | `> 🕐 HH:MM — project › prompt` | Latest entry (always updated) |
 | `#### HH:MM · project` | Project subsection (grouped by cwd) |
-| `<!-- cwd=... -->` | Section matching key (hidden in Obsidian) |
+| `<!-- cwd=... -->` | Section matching key (Reading view에서 숨김) |
 | `- - - - [[ses_...]]` | Session boundary (Obsidian wiki-link) |
 | `- HH:MM prompt` | Individual log entry |
 
