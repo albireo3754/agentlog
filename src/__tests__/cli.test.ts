@@ -19,7 +19,7 @@ const PROJECT_ROOT = "/Users/pray/work/js/agentlog";
 
 async function runCli(
   args: string[],
-  opts: { HOME?: string } = {}
+  opts: { HOME?: string; AGENTLOG_CONFIG_DIR?: string } = {}
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const env = { ...process.env, ...opts };
   const proc = Bun.spawn(
@@ -167,26 +167,22 @@ describe("cli init command", () => {
 
   // CL8: init expands ~/
   it("expands ~/ in vault path to absolute path in config", async () => {
-    // Create vault at real home so ~ expansion resolves correctly
-    const realHome = homedir();
-    const vault = join(realHome, ".agentlog-test-vault-tmp");
+    // Use tmpHome as HOME so ~/ expands to tmpHome inside the subprocess.
+    // AGENTLOG_CONFIG_DIR isolates config writes to tmpHome/.agentlog.
+    const vault = join(tmpHome, "test-vault");
     mkdirSync(join(vault, ".obsidian"), { recursive: true });
 
-    try {
-      // Use real HOME so ~ expands properly inside the CLI subprocess
-      await runCli(["init", "~/.agentlog-test-vault-tmp"]);
+    const cfgDir = join(tmpHome, ".agentlog");
+    await runCli(["init", "~/test-vault"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
 
-      const configPath = join(realHome, ".agentlog", "config.json");
-      if (existsSync(configPath)) {
-        const config = JSON.parse(readFileSync(configPath, "utf-8"));
-        expect(config.vault).not.toContain("~");
-        expect(config.vault).toBe(vault);
-      }
-    } finally {
-      rmSync(vault, { recursive: true, force: true });
-      // Clean up written config
-      rmSync(join(realHome, ".agentlog", "config.json"), { force: true });
-    }
+    const cfgPath = join(cfgDir, "config.json");
+    expect(existsSync(cfgPath)).toBe(true);
+    const config = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    expect(config.vault).not.toContain("~");
+    expect(config.vault).toBe(vault);
   });
 
   // No vault arg → shows detection guide (non-TTY exits 0)
