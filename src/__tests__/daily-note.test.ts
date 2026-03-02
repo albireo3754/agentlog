@@ -127,11 +127,11 @@ describe("buildAgentLogEntry", () => {
 
 describe("buildSessionDivider", () => {
   it("returns divider with first 8 chars of sessionId", () => {
-    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890")).toBe("- - - - (ses_abc12345)");
+    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890")).toBe("- - - - [[ses_abc12345]]");
   });
 
   it("uses full sessionId when shorter than 8 chars", () => {
-    expect(buildSessionDivider("abc")).toBe("- - - - (ses_abc)");
+    expect(buildSessionDivider("abc")).toBe("- - - - [[ses_abc]]");
   });
 });
 
