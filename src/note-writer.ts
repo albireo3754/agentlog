@@ -106,39 +106,55 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
   }
 
   // 3. Find #### project subsection matching entry.cwd
-  // New format: "#### project · HH:MM" + next line "<!-- cwd=<path> ses=<short> -->"
-  // Legacy format: "#### project · HH:MM <!-- cwd=<path> ses=<short> -->" (inline)
-  const metaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
+  // New format:    "#### HH:MM · project" + next line "<!-- cwd=<path> -->"
+  // Legacy meta:   "#### HH:MM · project" + next line "<!-- cwd=<path> ses=<short> -->"
+  // Legacy inline: "#### project · HH:MM <!-- cwd=<path> ses=<short> -->"
+  const metaRe = /^<!-- cwd=(.+?) -->$/;
+  const legacyMetaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
   const legacyHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=([\w-]+) -->$/;
+  const dividerRe = /^- - - - \(ses_([\w-]+)\)$/;
+
   let projectIdx = -1;
   let projectMetaIdx = -1; // -1 means legacy inline format (no separate metadata line)
-  let storedSes = "";
+  let legacySes = ""; // ses from legacy metadata, used as fallback when no dividers exist
   let existingTime = entry.time;
 
   for (let i = agentLogIdx + 1; i < agentLogEnd; i++) {
     if (!lines[i].startsWith("#### ")) continue;
 
-    // Try new format: metadata on next line
+    // Try new format: metadata on next line (no ses)
     const meta = lines[i + 1]?.match(metaRe);
     if (meta) {
-      const [, storedCwd, commentSes] = meta;
+      const [, storedCwd] = meta;
       if (storedCwd !== entry.cwd) continue;
       projectIdx = i;
       projectMetaIdx = i + 1;
-      storedSes = commentSes;
       const timeMatch = lines[i].match(/^#### (\d{2}:\d{2}) /);
       if (timeMatch) existingTime = timeMatch[1];
       break;
     }
 
-    // Try legacy format: inline comment in header
+    // Try legacy format: metadata with ses on next line
+    const legacyMeta = lines[i + 1]?.match(legacyMetaRe);
+    if (legacyMeta) {
+      const [, storedCwd, commentSes] = legacyMeta;
+      if (storedCwd !== entry.cwd) continue;
+      projectIdx = i;
+      projectMetaIdx = i + 1;
+      legacySes = commentSes;
+      const timeMatch = lines[i].match(/^#### (\d{2}:\d{2}) /);
+      if (timeMatch) existingTime = timeMatch[1];
+      break;
+    }
+
+    // Try legacy inline format
     const legacy = lines[i].match(legacyHeaderRe);
     if (legacy) {
       const [, storedCwd, commentSes] = legacy;
       if (storedCwd !== entry.cwd) continue;
       projectIdx = i;
-      projectMetaIdx = -1; // no separate metadata line in legacy format
-      storedSes = commentSes;
+      projectMetaIdx = -1;
+      legacySes = commentSes;
       const timeMatch = lines[i].match(/· (\d{2}:\d{2}) /);
       if (timeMatch) existingTime = timeMatch[1];
       break;
@@ -147,15 +163,16 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
 
   // 4. Insert entry
   if (projectIdx === -1) {
-    // New project: create #### section at end of ## AgentLog
+    // New project: create #### section with initial session divider at end of ## AgentLog.
+    // The initial divider anchors the starting session so subsequent entries can compare.
     const header = buildProjectHeader(entry.project, entry.time);
-    const meta = buildProjectMetadata(entry.cwd, sessionShort);
+    const meta = buildProjectMetadata(entry.cwd);
     const prevLine = lines[agentLogEnd - 1];
     const newSection: string[] = [];
     if (prevLine !== "" && prevLine !== "## AgentLog") {
       newSection.push("");
     }
-    newSection.push(header, meta, entryLine);
+    newSection.push(header, meta, buildSessionDivider(entry.sessionId), entryLine);
     lines.splice(agentLogEnd, 0, ...newSection);
   } else {
     // Existing project: find end of this subsection
@@ -167,24 +184,31 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
       }
     }
 
-    // Insert before trailing blank lines.
-    // For new format: first content line is at projectMetaIdx+1 (= projectIdx+2).
-    // For legacy format (projectMetaIdx===-1): first content line is at projectIdx+1.
     const firstContentIdx = projectMetaIdx === -1 ? projectIdx + 1 : projectMetaIdx + 1;
     let insertAt = subsectionEnd;
     while (insertAt > firstContentIdx && lines[insertAt - 1] === "") {
       insertAt--;
     }
 
-    if (storedSes !== sessionShort) {
-      // Session changed: insert divider + entry, update session in metadata.
+    // Determine current session from the last divider in this subsection.
+    // Falls back to legacySes (from old metadata format) if no dividers found.
+    let currentSes = "";
+    for (let i = firstContentIdx; i < subsectionEnd; i++) {
+      const m = lines[i].match(dividerRe);
+      if (m) currentSes = m[1];
+    }
+    if (!currentSes) currentSes = legacySes;
+
+    if (currentSes !== sessionShort) {
+      // Session changed: insert divider + entry.
       lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId), entryLine);
-      if (projectMetaIdx === -1) {
-        // Legacy format: replace inline header with new split format
+      // Migrate legacy metadata format to new format (remove ses=).
+      if (projectMetaIdx !== -1 && lines[projectMetaIdx].match(legacyMetaRe)) {
+        lines[projectMetaIdx] = buildProjectMetadata(entry.cwd);
+      } else if (projectMetaIdx === -1) {
+        // Legacy inline header → migrate to split format
         lines[projectIdx] = buildProjectHeader(entry.project, existingTime);
-        lines.splice(projectIdx + 1, 0, buildProjectMetadata(entry.cwd, sessionShort));
-      } else {
-        lines[projectMetaIdx] = buildProjectMetadata(entry.cwd, sessionShort);
+        lines.splice(projectIdx + 1, 0, buildProjectMetadata(entry.cwd));
       }
     } else {
       lines.splice(insertAt, 0, entryLine);

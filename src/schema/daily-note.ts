@@ -122,12 +122,13 @@ export function buildProjectHeader(
 
 /**
  * Metadata comment line placed directly below the project header.
- * Stores cwd (matching key) and session short hash for parsing.
- * Format: "<!-- cwd=<path> ses=<sessionShort> -->"
+ * Stores cwd (matching key) for section identification.
+ * Format: "<!-- cwd=<path> -->"
  *
  * Kept on a separate line so the #### heading remains visually clean.
  * HTML comments are hidden in Obsidian reading view.
+ * Session tracking is done via - - - - (ses_XXXXXXXX) divider lines in content.
  */
-export function buildProjectMetadata(cwd: string, sessionShort: string): string {
-  return `<!-- cwd=${cwd} ses=${sessionShort} -->`;
+export function buildProjectMetadata(cwd: string): string {
+  return `<!-- cwd=${cwd} -->`;
 }

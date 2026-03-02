@@ -150,15 +150,15 @@ describe("buildProjectHeader", () => {
 });
 
 describe("buildProjectMetadata", () => {
-  it("formats metadata comment with cwd and sessionShort", () => {
-    expect(buildProjectMetadata("/Users/pray/work/js/agentlog", "abc12345")).toBe(
-      "<!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->"
+  it("formats metadata comment with cwd only (no ses)", () => {
+    expect(buildProjectMetadata("/Users/pray/work/js/agentlog")).toBe(
+      "<!-- cwd=/Users/pray/work/js/agentlog -->"
     );
   });
 
   it("handles cwd with spaces correctly", () => {
-    expect(buildProjectMetadata("/Users/John Doe/work/js/agentlog", "abc12345")).toBe(
-      "<!-- cwd=/Users/John Doe/work/js/agentlog ses=abc12345 -->"
+    expect(buildProjectMetadata("/Users/John Doe/work/js/agentlog")).toBe(
+      "<!-- cwd=/Users/John Doe/work/js/agentlog -->"
     );
   });
 });

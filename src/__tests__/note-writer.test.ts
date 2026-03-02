@@ -83,7 +83,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).toContain("## AgentLog");
     expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
     expect(content).toContain("#### 10:53 · js/agentlog");
-    expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
+    expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog -->");
+    expect(content).toContain("- - - - (ses_abc12345)");
     expect(content).toContain("- 10:53 테스트 작업");
   });
 
@@ -136,8 +137,9 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(sections.length).toBe(2); // header + one project section
     expect(content).toContain("- 10:53 첫 번째 작업");
     expect(content).toContain("- 11:07 두 번째 작업");
-    // No session divider
-    expect(content).not.toContain("- - - -");
+    // Only the initial session divider, no additional ones
+    const dividerCount = (content.match(/- - - -/g) ?? []).length;
+    expect(dividerCount).toBe(1);
   });
 
   // N5: same project, different session → insert divider
@@ -151,6 +153,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     appendEntry(config, entry2, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("- - - - (ses_session1)");
     expect(content).toContain("- - - - (ses_session2)");
     expect(content).toContain("- 10:53 테스트 작업");
     expect(content).toContain("- 15:00 테스트 작업");
@@ -246,14 +249,15 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(result.filePath).toContain("2026-03-01-일.md");
   });
 
-  // N12: section header contains cwd and sessionShort
-  it("embeds full cwd and session short in section header comment", () => {
+  // N12: section header contains cwd (no ses in metadata)
+  it("embeds full cwd in section header comment (ses tracked via dividers)", () => {
     const entry = makeEntry();
     appendEntry(config, entry, TEST_DATE);
 
     const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
+    expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog -->");
+    expect(content).not.toContain("ses=");
   });
 
   // N13: cwd with spaces — section matching must not break
@@ -278,7 +282,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     // Should have only one #### section (not two)
     const sections = content.split("#### ");
     expect(sections.length).toBe(2);
-    expect(content).toContain("<!-- cwd=/Users/John Doe/work/js/agentlog ses=abc12345 -->");
+    expect(content).toContain("<!-- cwd=/Users/John Doe/work/js/agentlog -->");
     expect(content).toContain("- 10:53 테스트 작업");
     expect(content).toContain("- 11:00 두 번째 작업");
   });
@@ -295,8 +299,9 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     const content = readFileSync(filePath, "utf-8");
     // Only one #### section
     expect(content.split("#### ").length).toBe(2);
-    // No session dividers
-    expect(content).not.toContain("- - - -");
+    // Only the initial session divider, no additional ones
+    const dividerCount = (content.match(/- - - -/g) ?? []).length;
+    expect(dividerCount).toBe(1);
     // All three entries present
     expect(content).toContain("- 10:00 첫 번째");
     expect(content).toContain("- 10:30 두 번째");
