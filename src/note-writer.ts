@@ -126,7 +126,7 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
       projectIdx = i;
       projectMetaIdx = i + 1;
       storedSes = commentSes;
-      const timeMatch = lines[i].match(/· (\d{2}:\d{2})$/);
+      const timeMatch = lines[i].match(/^#### (\d{2}:\d{2}) /);
       if (timeMatch) existingTime = timeMatch[1];
       break;
     }

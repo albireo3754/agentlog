@@ -145,7 +145,7 @@ describe("buildLatestLine", () => {
 
 describe("buildProjectHeader", () => {
   it("formats project header without cwd/session metadata", () => {
-    expect(buildProjectHeader("js/agentlog", "10:53")).toBe("#### js/agentlog · 10:53");
+    expect(buildProjectHeader("js/agentlog", "10:53")).toBe("#### 10:53 · js/agentlog");
   });
 });
 

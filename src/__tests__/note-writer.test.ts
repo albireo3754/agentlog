@@ -82,7 +82,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     const content = readFileSync(result.filePath, "utf-8");
     expect(content).toContain("## AgentLog");
     expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
-    expect(content).toContain("#### js/agentlog · 10:53");
+    expect(content).toContain("#### 10:53 · js/agentlog");
     expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
     expect(content).toContain("- 10:53 테스트 작업");
   });
@@ -175,8 +175,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     appendEntry(config, entry2, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("#### js/agentlog · 10:53");
-    expect(content).toContain("#### kotlin/my-project · 15:00");
+    expect(content).toContain("#### 10:53 · js/agentlog");
+    expect(content).toContain("#### 15:00 · kotlin/my-project");
   });
 
   // N7: > 🕐 latest line always reflects the most recent entry
@@ -203,8 +203,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
     const content = readFileSync(filePath, "utf-8");
     // Header should still show 10:53 (first entry time), not 15:00
-    expect(content).toContain("#### js/agentlog · 10:53");
-    expect(content).not.toContain("#### js/agentlog · 15:00");
+    expect(content).toContain("#### 10:53 · js/agentlog");
+    expect(content).not.toContain("#### 15:00 · js/agentlog");
   });
 
   // N9: ## AgentLog already exists → append project section inside it
@@ -212,7 +212,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
     writeFileSync(
       filePath,
-      "# 2026-03-01\n\n## AgentLog\n> 🕐 09:00 — js/old › old entry\n\n#### js/old · 09:00\n<!-- cwd=/old/path ses=abc00000 -->\n- 09:00 old entry\n",
+      "# 2026-03-01\n\n## AgentLog\n> 🕐 09:00 — js/old › old entry\n\n#### 09:00 · js/old\n<!-- cwd=/old/path ses=abc00000 -->\n- 09:00 old entry\n",
       "utf-8"
     );
 
@@ -220,8 +220,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     appendEntry(config, entry, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("#### js/old · 09:00");
-    expect(content).toContain("#### js/agentlog · 10:53");
+    expect(content).toContain("#### 09:00 · js/old");
+    expect(content).toContain("#### 10:53 · js/agentlog");
     expect(content).toContain("- 09:00 old entry");
     expect(content).toContain("- 10:53 테스트 작업");
   });

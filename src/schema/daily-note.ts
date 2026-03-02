@@ -111,13 +111,13 @@ export function buildLatestLine(time: string, project: string, prompt: string): 
 
 /**
  * Project subsection header line.
- * Format: "#### project · HH:MM"
+ * Format: "#### HH:MM · project"
  */
 export function buildProjectHeader(
   project: string,
   time: string,
 ): string {
-  return `#### ${project} · ${time}`;
+  return `#### ${time} · ${project}`;
 }
 
 /**
