@@ -7,6 +7,7 @@ import {
   buildLogLine,
   dailyNoteFileName,
 } from "./schema/daily-note.js";
+import { cliDailyAppend } from "./obsidian-cli.js";
 
 /** Zero-pads a number to 2 digits. */
 function pad2(n: number): string {
@@ -25,7 +26,33 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string {
 }
 
 /**
+ * Attempt CLI daily:append. Returns WriteResult on success, null on failure.
+ * Catches all errors (timeout, spawn failure) to maintain fail-silent contract.
+ */
+function tryCliAppend(entryLine: string): WriteResult | null {
+  try {
+    const result = cliDailyAppend(entryLine);
+    if (result.success) {
+      return {
+        filePath: "(via obsidian cli)",
+        created: false,
+        section: "cli",
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Appends a log entry to the Daily Note.
+ *
+ * Write strategy (controlled by config.writeMode):
+ *   "auto" (default): try CLI first, fallback to file write
+ *   "cli":  prefer CLI, fallback to file write on failure
+ *   "file": file write only (current behavior)
+ *
  * - Finds the matching timeblock line and inserts after it (and any existing entries in that block).
  * - Falls back to an ## AgentLog section at end of file.
  * - Creates the file if it doesn't exist.
@@ -37,11 +64,23 @@ export function appendEntry(
 ): WriteResult {
   const filePath = dailyNotePath(config, date);
   const entryLine = buildLogLine(entry.time, entry.prompt);
+  const mode = config.writeMode ?? "auto";
 
+  // Plain mode: always use file write (CLI daily:append doesn't support custom paths)
   if (config.plain) {
     return appendPlain(filePath, entry, date);
   }
 
+  // CLI path
+  if (mode === "cli" || mode === "auto") {
+    const cliResult = tryCliAppend(entryLine);
+    if (cliResult) return cliResult;
+    if (mode === "cli") {
+      process.stderr.write("[agentlog] CLI write failed, falling back to file write\n");
+    }
+  }
+
+  // File write path (existing logic)
   const created = !existsSync(filePath);
 
   if (created) {

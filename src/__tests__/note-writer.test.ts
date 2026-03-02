@@ -207,6 +207,81 @@ describe("appendEntry — timeblock mode", () => {
   });
 });
 
+describe("appendEntry — writeMode=file (explicit file mode)", () => {
+  let tmpDir: string;
+  let config: AgentLogConfig;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    config = { vault: tmpDir, writeMode: "file" };
+    mkdirSync(join(tmpDir, "Daily"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("skips CLI and writes directly to file", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
+
+    const entry: LogEntry = { time: "10:53", prompt: "file mode test" };
+    const result = appendEntry(config, entry, TEST_DATE);
+
+    // Should use file write, not CLI
+    expect(result.section).toBe("timeblock");
+    expect(result.filePath).toBe(filePath);
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("  - 10:53 file mode test");
+  });
+
+  it("creates new file when writeMode is file", () => {
+    const entry: LogEntry = { time: "10:53", prompt: "new file mode" };
+    const result = appendEntry(config, entry, TEST_DATE);
+
+    expect(result.created).toBe(true);
+    expect(result.section).toBe("agentlog");
+    expect(existsSync(result.filePath)).toBe(true);
+  });
+});
+
+describe("appendEntry — writeMode=auto (default fallback)", () => {
+  let tmpDir: string;
+  let config: AgentLogConfig;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    // writeMode undefined = "auto": try CLI first, fall back to file
+    config = { vault: tmpDir };
+    mkdirSync(join(tmpDir, "Daily"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("falls back to file write when CLI is unavailable (auto mode)", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
+
+    const entry: LogEntry = { time: "10:53", prompt: "auto fallback" };
+    const result = appendEntry(config, entry, TEST_DATE);
+
+    // CLI will fail (obsidian not installed in test env), falls back to file
+    expect(["timeblock", "agentlog", "cli"]).toContain(result.section);
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("  - 10:53 auto fallback");
+  });
+
+  it("plain mode always uses file write regardless of writeMode", () => {
+    const plainConfig: AgentLogConfig = { vault: tmpDir, plain: true, writeMode: "auto" };
+    const entry: LogEntry = { time: "10:53", prompt: "plain auto" };
+    const result = appendEntry(plainConfig, entry, TEST_DATE);
+
+    expect(result.section).toBe("plain");
+  });
+});
+
 describe("appendEntry — plain mode", () => {
   let tmpDir: string;
   let config: AgentLogConfig;

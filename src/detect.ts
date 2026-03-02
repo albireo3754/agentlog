@@ -1,11 +1,13 @@
 /**
  * Obsidian vault auto-detection for agentlog init.
  * Reads macOS Obsidian app registry and scans common paths.
+ * Also detects Obsidian CLI (1.12+) availability.
  */
 
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { spawnSync } from "child_process";
 
 export interface DetectedVault {
   path: string;
@@ -60,4 +62,30 @@ export function detectVaults(): DetectedVault[] {
   }
 
   return found;
+}
+
+export interface CliDetection {
+  installed: boolean;
+  binPath: string | null;
+  version: string | null;
+}
+
+/** Detect Obsidian CLI availability. Lightweight — no app-running check. */
+export function detectCli(): CliDetection {
+  const which = spawnSync("which", ["obsidian"], {
+    encoding: "utf-8",
+    timeout: 3000,
+  });
+  if (which.status !== 0) {
+    return { installed: false, binPath: null, version: null };
+  }
+
+  const binPath = which.stdout.trim();
+  const ver = spawnSync("obsidian", ["version"], {
+    encoding: "utf-8",
+    timeout: 3000,
+  });
+  const version = ver.status === 0 ? ver.stdout.trim() || null : null;
+
+  return { installed: true, binPath, version };
 }

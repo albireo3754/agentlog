@@ -13,7 +13,8 @@ import { join, resolve } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { saveConfig, loadConfig, expandHome } from "./config.js";
-import { detectVaults } from "./detect.js";
+import { detectVaults, detectCli } from "./detect.js";
+import { isVersionAtLeast, MIN_CLI_VERSION } from "./obsidian-cli.js";
 import * as readline from "readline";
 
 const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
@@ -33,6 +34,7 @@ function usage(): void {
   agentlog init [vault] [--plain]   Configure vault and register hook
   agentlog detect                   List detected Obsidian vaults
   agentlog doctor                   Check installation health
+  agentlog open                     Open today's Daily Note in Obsidian (CLI)
   agentlog uninstall                Remove hook and config
   agentlog hook                     Run hook (called by Claude Code)
 
@@ -83,6 +85,18 @@ Or to write to a plain folder:
   saveConfig({ vault, ...(plain ? { plain: true } : {}) });
   console.log(`Config saved: ${join(homedir(), ".agentlog", "config.json")}`);
   console.log(`  vault: ${vault}${plain ? " (plain mode)" : ""}`);
+
+  // Probe CLI availability (informational)
+  if (!plain) {
+    const cli = detectCli();
+    if (cli.installed) {
+      console.log(`  Obsidian CLI: detected (${cli.version ?? "unknown version"})`);
+      console.log(`  Daily notes will be written via CLI when Obsidian is running.`);
+    } else {
+      console.log(`  Obsidian CLI: not detected (using direct file write)`);
+      console.log(`  For better integration, enable CLI in Obsidian 1.12+ Settings.`);
+    }
+  }
 
   // Register hook in ~/.claude/settings.json
   registerHook();
@@ -190,6 +204,16 @@ async function cmdDetect(): Promise<void> {
   vaults.forEach((v, i) => {
     console.log(`  ${i + 1}) ${v.path}`);
   });
+
+  // CLI detection
+  const cli = detectCli();
+  console.log("");
+  if (cli.installed) {
+    console.log(`Obsidian CLI: ${cli.binPath} (${cli.version ?? "version unknown"})`);
+  } else {
+    console.log("Obsidian CLI: not detected");
+    console.log("  Enable in Obsidian 1.12+ Settings > General > Command line interface");
+  }
 }
 
 function unregisterHook(): boolean {
@@ -332,13 +356,22 @@ function isHookRegistered(): boolean {
 
 /** agentlog doctor — check installation health */
 async function cmdDoctor(): Promise<void> {
+  // Show agentlog version
+  try {
+    const pkgPath = join(import.meta.dir ?? new URL(".", import.meta.url).pathname, "..", "package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
+    if (pkg.version) console.log(`agentlog v${pkg.version}\n`);
+  } catch {
+    // version display is best-effort
+  }
+
   let allOk = true;
 
-  function check(label: string, ok: boolean, detail: string, hint?: string): void {
-    const icon = ok ? "✅" : "❌";
+  function check(label: string, ok: boolean, detail: string, hint?: string, warnOnly?: boolean): void {
+    const icon = ok ? "✅" : warnOnly ? "⚠️" : "❌";
     const suffix = !ok && hint ? `  →  ${hint}` : "";
     console.log(`${icon} ${label.padEnd(10)} ${detail}${suffix}`);
-    if (!ok) allOk = false;
+    if (!ok && !warnOnly) allOk = false;
   }
 
   // 1. Binary in PATH
@@ -368,7 +401,7 @@ async function cmdDoctor(): Promise<void> {
     );
   }
 
-  // 4. Obsidian app installed (macOS only, skip for plain mode)
+  // 3. Obsidian app installed (macOS only, skip for plain mode)
   if (process.platform === "darwin" && (!config || !config.plain)) {
     const obsidianPaths = [
       "/Applications/Obsidian.app",
@@ -381,6 +414,47 @@ async function cmdDoctor(): Promise<void> {
       foundPath ?? "not installed",
       "brew install --cask obsidian  or  https://obsidian.md/download"
     );
+  }
+
+  // 4. Obsidian CLI checks (warn-only, skip for plain mode)
+  if (!config || !config.plain) {
+    const cliWhich = spawnSync("which", ["obsidian"], { encoding: "utf-8", timeout: 3000 });
+    const cliBinPath = cliWhich.status === 0 ? cliWhich.stdout.trim() : "";
+    check(
+      "cli",
+      !!cliBinPath,
+      cliBinPath || "not found in PATH",
+      "Enable CLI in Obsidian Settings > General, then register in PATH",
+      true
+    );
+
+    if (cliBinPath) {
+      // 4a. CLI version + minimum version check
+      const cliVer = spawnSync("obsidian", ["version"], { encoding: "utf-8", timeout: 3000 });
+      const version = cliVer.status === 0 ? cliVer.stdout.trim() : "";
+      if (version) {
+        const meetsMin = isVersionAtLeast(version, MIN_CLI_VERSION);
+        check(
+          "cli-ver",
+          meetsMin,
+          meetsMin ? version : `${version} (requires ${MIN_CLI_VERSION}+)`,
+          meetsMin ? undefined : `Update Obsidian: https://help.obsidian.md/updates`,
+          true
+        );
+      } else {
+        check("cli-ver", false, "could not determine version", "Ensure Obsidian app is running", true);
+      }
+
+      // 4b. CLI responsive (app running + can communicate)
+      const cliProbe = spawnSync("obsidian", ["daily:path"], { encoding: "utf-8", timeout: 3000 });
+      check(
+        "cli-app",
+        cliProbe.status === 0,
+        cliProbe.status === 0 ? "responsive" : "app not responding",
+        "Start Obsidian app, or check CLI settings",
+        true
+      );
+    }
   }
 
   // 5. Hook registered
@@ -397,6 +471,21 @@ async function cmdDoctor(): Promise<void> {
     console.log("All checks passed.");
   } else {
     console.log("Some checks failed. Fix the issues above and re-run: agentlog doctor");
+    process.exit(1);
+  }
+}
+
+/** agentlog open — open today's Daily Note in Obsidian via CLI */
+async function cmdOpen(): Promise<void> {
+  const proc = spawnSync("obsidian", ["daily"], {
+    encoding: "utf-8",
+    timeout: 5000,
+  });
+  if (proc.status === 0) {
+    console.log("Opened today's Daily Note in Obsidian.");
+  } else {
+    console.error("Failed to open. Is Obsidian running with CLI enabled?");
+    console.error("  Enable CLI in Obsidian 1.12+ Settings > General > Command line interface");
     process.exit(1);
   }
 }
@@ -419,6 +508,9 @@ switch (command) {
     break;
   case "doctor":
     await cmdDoctor();
+    break;
+  case "open":
+    await cmdOpen();
     break;
   case "uninstall":
     await cmdUninstall(rest);
