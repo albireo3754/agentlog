@@ -429,7 +429,7 @@ async function cmdDoctor(): Promise<void> {
       "cli",
       !!cliBinPath,
       cliBinPath || "not found",
-      "Enable CLI in Obsidian Settings > General, then register in PATH",
+      "Enable CLI in Obsidian Settings > General, then register in PATH (or set OBSIDIAN_BIN)",
       true
     );
 

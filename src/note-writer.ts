@@ -7,6 +7,7 @@ import {
   buildSessionDivider,
   buildLatestLine,
   buildProjectHeader,
+  buildProjectMetadata,
 } from "./schema/daily-note.js";
 
 /** Zero-pads a number to 2 digits. */
@@ -105,36 +106,56 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
   }
 
   // 3. Find #### project subsection matching entry.cwd
-  // Header format: "#### project · HH:MM <!-- cwd=<path> ses=<sessionShort> -->"
-  // Structured format handles cwd paths that contain spaces.
-  const projectHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=(\w+) -->$/;
+  // New format: "#### project · HH:MM" + next line "<!-- cwd=<path> ses=<short> -->"
+  // Legacy format: "#### project · HH:MM <!-- cwd=<path> ses=<short> -->" (inline)
+  const metaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
+  const legacyHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=([\w-]+) -->$/;
   let projectIdx = -1;
+  let projectMetaIdx = -1; // -1 means legacy inline format (no separate metadata line)
   let storedSes = "";
   let existingTime = entry.time;
 
   for (let i = agentLogIdx + 1; i < agentLogEnd; i++) {
-    const m = lines[i].match(projectHeaderRe);
-    if (!m) continue;
-    const [, storedCwd, commentSes] = m;
-    if (storedCwd !== entry.cwd) continue;
-    projectIdx = i;
-    storedSes = commentSes;
-    // Preserve the original start time from the existing header
-    const timeMatch = lines[i].match(/· (\d{2}:\d{2}) /);
-    if (timeMatch) existingTime = timeMatch[1];
-    break;
+    if (!lines[i].startsWith("#### ")) continue;
+
+    // Try new format: metadata on next line
+    const meta = lines[i + 1]?.match(metaRe);
+    if (meta) {
+      const [, storedCwd, commentSes] = meta;
+      if (storedCwd !== entry.cwd) continue;
+      projectIdx = i;
+      projectMetaIdx = i + 1;
+      storedSes = commentSes;
+      const timeMatch = lines[i].match(/· (\d{2}:\d{2})$/);
+      if (timeMatch) existingTime = timeMatch[1];
+      break;
+    }
+
+    // Try legacy format: inline comment in header
+    const legacy = lines[i].match(legacyHeaderRe);
+    if (legacy) {
+      const [, storedCwd, commentSes] = legacy;
+      if (storedCwd !== entry.cwd) continue;
+      projectIdx = i;
+      projectMetaIdx = -1; // no separate metadata line in legacy format
+      storedSes = commentSes;
+      const timeMatch = lines[i].match(/· (\d{2}:\d{2}) /);
+      if (timeMatch) existingTime = timeMatch[1];
+      break;
+    }
   }
 
   // 4. Insert entry
   if (projectIdx === -1) {
     // New project: create #### section at end of ## AgentLog
-    const header = buildProjectHeader(entry.project, entry.time, entry.cwd, sessionShort);
+    const header = buildProjectHeader(entry.project, entry.time);
+    const meta = buildProjectMetadata(entry.cwd, sessionShort);
     const prevLine = lines[agentLogEnd - 1];
     const newSection: string[] = [];
     if (prevLine !== "" && prevLine !== "## AgentLog") {
       newSection.push("");
     }
-    newSection.push(header, entryLine);
+    newSection.push(header, meta, entryLine);
     lines.splice(agentLogEnd, 0, ...newSection);
   } else {
     // Existing project: find end of this subsection
@@ -146,16 +167,25 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
       }
     }
 
-    // Insert before trailing blank lines
+    // Insert before trailing blank lines.
+    // For new format: first content line is at projectMetaIdx+1 (= projectIdx+2).
+    // For legacy format (projectMetaIdx===-1): first content line is at projectIdx+1.
+    const firstContentIdx = projectMetaIdx === -1 ? projectIdx + 1 : projectMetaIdx + 1;
     let insertAt = subsectionEnd;
-    while (insertAt > projectIdx + 1 && lines[insertAt - 1] === "") {
+    while (insertAt > firstContentIdx && lines[insertAt - 1] === "") {
       insertAt--;
     }
 
     if (storedSes !== sessionShort) {
-      // Session changed: insert divider + entry, update header session
+      // Session changed: insert divider + entry, update session in metadata.
       lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId), entryLine);
-      lines[projectIdx] = buildProjectHeader(entry.project, existingTime, entry.cwd, sessionShort);
+      if (projectMetaIdx === -1) {
+        // Legacy format: replace inline header with new split format
+        lines[projectIdx] = buildProjectHeader(entry.project, existingTime);
+        lines.splice(projectIdx + 1, 0, buildProjectMetadata(entry.cwd, sessionShort));
+      } else {
+        lines[projectMetaIdx] = buildProjectMetadata(entry.cwd, sessionShort);
+      }
     } else {
       lines.splice(insertAt, 0, entryLine);
     }

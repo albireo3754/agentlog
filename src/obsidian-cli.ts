@@ -12,32 +12,49 @@ const MACOS_CLI_PATHS = [
   "/Applications/Obsidian.app/Contents/MacOS/obsidian",
 ];
 
-/** Cached resolved binary path (null = not yet resolved, "" = not found). */
-let _cachedBin: string | null = null;
+type CliBinCacheState =
+  | { status: "unresolved" }
+  | { status: "resolved"; bin: string }
+  | { status: "not-found" };
+
+/** Cached CLI resolution state for PATH/macos fallback lookup. */
+let _cachedBinState: CliBinCacheState = { status: "unresolved" };
+
+function envOverrideBin(): string | null {
+  const raw = process.env.OBSIDIAN_BIN?.trim();
+  return raw ? raw : null;
+}
 
 /**
  * Resolve the `obsidian` CLI binary path.
- * Tries `which obsidian` first, then known macOS paths.
+ * Resolution order:
+ * 1) OBSIDIAN_BIN env override
+ * 2) `which obsidian`
+ * 3) known macOS app bundle paths
  */
 export function resolveCliBin(): string | null {
-  if (_cachedBin !== null) return _cachedBin || null;
+  const override = envOverrideBin();
+  if (override) return override;
+
+  if (_cachedBinState.status === "resolved") return _cachedBinState.bin;
+  if (_cachedBinState.status === "not-found") return null;
 
   const which = spawnSync("which", ["obsidian"], { encoding: "utf-8", timeout: 3000 });
   if (which.status === 0 && which.stdout.trim()) {
-    _cachedBin = which.stdout.trim();
-    return _cachedBin;
+    _cachedBinState = { status: "resolved", bin: which.stdout.trim() };
+    return _cachedBinState.bin;
   }
 
   if (process.platform === "darwin") {
     for (const p of MACOS_CLI_PATHS) {
       if (existsSync(p)) {
-        _cachedBin = p;
-        return _cachedBin;
+        _cachedBinState = { status: "resolved", bin: p };
+        return _cachedBinState.bin;
       }
     }
   }
 
-  _cachedBin = "";
+  _cachedBinState = { status: "not-found" };
   return null;
 }
 
@@ -52,7 +69,7 @@ function obsidianSync(args: string[], timeout: number) {
 export interface ObsidianCliStatus {
   /** CLI binary found in PATH */
   installed: boolean;
-  /** Path to the binary (from `which obsidian`) */
+  /** Path or command used for the CLI (OBSIDIAN_BIN override or auto-resolved) */
   binPath: string | null;
   /** Version string from `obsidian version` */
   version: string | null;

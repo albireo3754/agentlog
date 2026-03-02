@@ -82,7 +82,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     const content = readFileSync(result.filePath, "utf-8");
     expect(content).toContain("## AgentLog");
     expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
-    expect(content).toContain("#### js/agentlog · 10:53 <!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
+    expect(content).toContain("#### js/agentlog · 10:53");
+    expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
     expect(content).toContain("- 10:53 테스트 작업");
   });
 
@@ -211,7 +212,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
     writeFileSync(
       filePath,
-      "# 2026-03-01\n\n## AgentLog\n> 🕐 09:00 — js/old › old entry\n\n#### js/old · 09:00 <!-- cwd=/old/path ses=abc00000 -->\n- 09:00 old entry\n",
+      "# 2026-03-01\n\n## AgentLog\n> 🕐 09:00 — js/old › old entry\n\n#### js/old · 09:00\n<!-- cwd=/old/path ses=abc00000 -->\n- 09:00 old entry\n",
       "utf-8"
     );
 

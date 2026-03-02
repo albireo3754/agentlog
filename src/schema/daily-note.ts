@@ -64,12 +64,11 @@ export const TIME_BLOCK_LINE_RE =
 
 /**
  * Build a log line for insertion into a Daily Note.
- * Format: "  - HH:MM prompt text (max 100 chars)"
+ * Format: "  - HH:MM prompt text"
  * @deprecated Use buildAgentLogEntry for new ## AgentLog section entries.
  */
 export function buildLogLine(time: string, prompt: string): string {
-  const truncated = prompt.slice(0, 100);
-  return `  - ${time} ${truncated}`;
+  return `  - ${time} ${prompt}`;
 }
 
 /**
@@ -111,16 +110,24 @@ export function buildLatestLine(time: string, project: string, prompt: string): 
 }
 
 /**
- * Project subsection header with embedded cwd (matching key) and session short hash.
- * Format: "#### project · HH:MM <!-- cwd=<path> ses=<sessionShort> -->"
- *
- * Structured format ensures correct parsing even when cwd contains spaces.
+ * Project subsection header line.
+ * Format: "#### project · HH:MM"
  */
 export function buildProjectHeader(
   project: string,
   time: string,
-  cwd: string,
-  sessionShort: string
 ): string {
-  return `#### ${project} · ${time} <!-- cwd=${cwd} ses=${sessionShort} -->`;
+  return `#### ${project} · ${time}`;
+}
+
+/**
+ * Metadata comment line placed directly below the project header.
+ * Stores cwd (matching key) and session short hash for parsing.
+ * Format: "<!-- cwd=<path> ses=<sessionShort> -->"
+ *
+ * Kept on a separate line so the #### heading remains visually clean.
+ * HTML comments are hidden in Obsidian reading view.
+ */
+export function buildProjectMetadata(cwd: string, sessionShort: string): string {
+  return `<!-- cwd=${cwd} ses=${sessionShort} -->`;
 }

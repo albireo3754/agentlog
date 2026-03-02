@@ -9,6 +9,7 @@ import {
   buildSessionDivider,
   buildLatestLine,
   buildProjectHeader,
+  buildProjectMetadata,
 } from "../schema/daily-note.js";
 
 describe("dailyNoteFileName", () => {
@@ -150,15 +151,21 @@ describe("buildLatestLine", () => {
 });
 
 describe("buildProjectHeader", () => {
-  it("formats project header with cwd and sessionShort", () => {
-    expect(
-      buildProjectHeader("js/agentlog", "10:53", "/Users/pray/work/js/agentlog", "abc12345")
-    ).toBe("#### js/agentlog · 10:53 <!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->");
+  it("formats project header without cwd/session metadata", () => {
+    expect(buildProjectHeader("js/agentlog", "10:53")).toBe("#### js/agentlog · 10:53");
+  });
+});
+
+describe("buildProjectMetadata", () => {
+  it("formats metadata comment with cwd and sessionShort", () => {
+    expect(buildProjectMetadata("/Users/pray/work/js/agentlog", "abc12345")).toBe(
+      "<!-- cwd=/Users/pray/work/js/agentlog ses=abc12345 -->"
+    );
   });
 
   it("handles cwd with spaces correctly", () => {
-    expect(
-      buildProjectHeader("js/agentlog", "10:53", "/Users/John Doe/work/js/agentlog", "abc12345")
-    ).toBe("#### js/agentlog · 10:53 <!-- cwd=/Users/John Doe/work/js/agentlog ses=abc12345 -->");
+    expect(buildProjectMetadata("/Users/John Doe/work/js/agentlog", "abc12345")).toBe(
+      "<!-- cwd=/Users/John Doe/work/js/agentlog ses=abc12345 -->"
+    );
   });
 });

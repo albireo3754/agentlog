@@ -1,6 +1,6 @@
-import { describe, it, expect } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-import { isVersionAtLeast, MIN_CLI_VERSION } from "../obsidian-cli.js";
+import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin } from "../obsidian-cli.js";
 
 describe("isVersionAtLeast", () => {
   it("returns true when versions are equal", () => {
@@ -45,5 +45,39 @@ describe("isVersionAtLeast", () => {
 describe("MIN_CLI_VERSION", () => {
   it("is set to 1.12.4", () => {
     expect(MIN_CLI_VERSION).toBe("1.12.4");
+  });
+});
+
+describe("resolveCliBin — OBSIDIAN_BIN override", () => {
+  const originalOverride = process.env.OBSIDIAN_BIN;
+
+  beforeEach(() => {
+    delete process.env.OBSIDIAN_BIN;
+  });
+
+  afterEach(() => {
+    if (originalOverride === undefined) {
+      delete process.env.OBSIDIAN_BIN;
+    } else {
+      process.env.OBSIDIAN_BIN = originalOverride;
+    }
+  });
+
+  it("returns OBSIDIAN_BIN when set", () => {
+    process.env.OBSIDIAN_BIN = "/custom/obsidian";
+    expect(resolveCliBin()).toBe("/custom/obsidian");
+  });
+
+  it("trims OBSIDIAN_BIN value", () => {
+    process.env.OBSIDIAN_BIN = "  /custom/obsidian  ";
+    expect(resolveCliBin()).toBe("/custom/obsidian");
+  });
+
+  it("prioritizes OBSIDIAN_BIN over previously cached auto resolution", () => {
+    // Warm cache with auto resolution path (found or not-found).
+    resolveCliBin();
+
+    process.env.OBSIDIAN_BIN = "/override/obsidian";
+    expect(resolveCliBin()).toBe("/override/obsidian");
   });
 });
