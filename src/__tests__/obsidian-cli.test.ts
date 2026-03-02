@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin } from "../obsidian-cli.js";
+import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, cliDailyPath } from "../obsidian-cli.js";
+import { writeFileSync, mkdirSync, chmodSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 
 describe("isVersionAtLeast", () => {
   it("returns true when versions are equal", () => {
@@ -79,5 +82,65 @@ describe("resolveCliBin — OBSIDIAN_BIN override", () => {
 
     process.env.OBSIDIAN_BIN = "/override/obsidian";
     expect(resolveCliBin()).toBe("/override/obsidian");
+  });
+});
+
+describe("cliDailyPath", () => {
+  const originalBin = process.env.OBSIDIAN_BIN;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `agentlog-cli-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    if (originalBin === undefined) {
+      delete process.env.OBSIDIAN_BIN;
+    } else {
+      process.env.OBSIDIAN_BIN = originalBin;
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns path from CLI stdout", () => {
+    const mockBin = join(tmpDir, "mock-obsidian");
+    writeFileSync(mockBin, '#!/bin/bash\necho "Custom/2026-03-01-일.md"', "utf-8");
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliDailyPath()).toBe("Custom/2026-03-01-일.md");
+  });
+
+  it("returns null when CLI exits non-zero", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-fail");
+    writeFileSync(mockBin, "#!/bin/bash\nexit 1", "utf-8");
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliDailyPath()).toBeNull();
+  });
+
+  it("returns null when CLI binary not found", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    expect(cliDailyPath()).toBeNull();
+  });
+
+  it("trims whitespace from CLI output", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-ws");
+    writeFileSync(mockBin, '#!/bin/bash\necho "  Daily/2026-03-01-일.md  "', "utf-8");
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliDailyPath()).toBe("Daily/2026-03-01-일.md");
+  });
+
+  it("returns null when CLI outputs empty string", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-empty");
+    writeFileSync(mockBin, '#!/bin/bash\necho ""', "utf-8");
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliDailyPath()).toBeNull();
   });
 });

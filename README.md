@@ -86,7 +86,7 @@ Use Claude Code normally. Every prompt you type gets logged to your Daily Note.
 1. You type a prompt in Claude Code
 2. Claude Code fires the `UserPromptSubmit` hook
 3. AgentLog reads the prompt from stdin and sanitizes it
-4. Finds your Daily Note: `{vault}/Daily/YYYY-MM-DD-요일.md` (경로 하드코딩, Obsidian Daily Notes 폴더 설정과 다를 수 있음)
+4. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12+), fallback: `{vault}/Daily/YYYY-MM-DD-요일.md`
 5. Finds or creates a `## AgentLog` section
 6. Finds or creates a `#### project` subsection matching the current working directory
 7. Inserts a session divider `[[ses_...]]` if the session changed, then appends the entry
@@ -98,7 +98,7 @@ Total overhead: < 50ms per prompt. Fire-and-forget, never blocks Claude Code.
 
 ### Obsidian Mode (default)
 
-Entries go to `{vault}/Daily/YYYY-MM-DD-요일.md` under a `## AgentLog` section. Daily Notes 폴더가 `Daily/`가 아닌 경우 `init` 시 vault 경로를 조정하거나, Obsidian Daily Notes 폴더 설정을 `Daily/`로 맞춰야 합니다.
+Daily Note 경로는 `obsidian daily:path` CLI 명령으로 동적 해석 (Obsidian 1.12+). Obsidian이 실행 중이 아니거나 CLI를 사용할 수 없으면 `{vault}/Daily/YYYY-MM-DD-요일.md`로 fallback.
 
 Each working directory gets its own `#### project` subsection. Session changes insert a `[[ses_...]]` wiki-link divider. The `> 🕐` blockquote at the top always shows the latest entry across all projects.
 

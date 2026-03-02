@@ -58,6 +58,21 @@ export function resolveCliBin(): string | null {
   return null;
 }
 
+/**
+ * Get today's Daily Note path via `obsidian daily:path`.
+ * Returns the path from Obsidian's Daily Notes settings (relative to vault).
+ * Returns null if CLI is unavailable or Obsidian is not running.
+ */
+export function cliDailyPath(): string | null {
+  const bin = resolveCliBin();
+  if (!bin) return null;
+  const result = spawnSync(bin, ["daily:path"], { encoding: "utf-8", timeout: 3000 });
+  if (result.status !== 0) return null;
+  // stdout may contain warning lines on stderr; stdout has the path
+  const path = result.stdout.trim();
+  return path || null;
+}
+
 /** Minimum Obsidian version that supports CLI */
 export const MIN_CLI_VERSION = "1.12.4";
 

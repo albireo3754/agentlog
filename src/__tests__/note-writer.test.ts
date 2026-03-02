@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "fs";
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync, chmodSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -43,7 +43,18 @@ const FIXTURE_NO_TIMEBLOCKS = `# 2026-03-01
 오늘 할 일 메모.`;
 
 describe("dailyNotePath", () => {
-  it("returns Obsidian Daily path with Korean day name", () => {
+  const originalBin = process.env.OBSIDIAN_BIN;
+
+  afterEach(() => {
+    if (originalBin === undefined) {
+      delete process.env.OBSIDIAN_BIN;
+    } else {
+      process.env.OBSIDIAN_BIN = originalBin;
+    }
+  });
+
+  it("returns Obsidian Daily path with Korean day name (CLI unavailable)", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
     const config: AgentLogConfig = { vault: "/vault" };
     const path = dailyNotePath(config, TEST_DATE);
     expect(path).toBe("/vault/Daily/2026-03-01-일.md");
@@ -54,20 +65,50 @@ describe("dailyNotePath", () => {
     const path = dailyNotePath(config, TEST_DATE);
     expect(path).toBe("/vault/2026-03-01.md");
   });
+
+  it("uses CLI path when CLI succeeds", () => {
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    writeFileSync(mockBin, '#!/bin/bash\necho "Notes/2026-03-01-일.md"', "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const config: AgentLogConfig = { vault: "/vault" };
+    const path = dailyNotePath(config, TEST_DATE);
+    expect(path).toBe("/vault/Notes/2026-03-01-일.md");
+
+    rmSync(mockBin, { force: true });
+  });
+
+  it("falls back to hardcoded path when CLI fails", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+
+    const config: AgentLogConfig = { vault: "/vault" };
+    const path = dailyNotePath(config, TEST_DATE);
+    expect(path).toBe("/vault/Daily/2026-03-01-일.md");
+  });
+
 });
 
 describe("appendEntry — session-grouped AgentLog section", () => {
   let tmpDir: string;
   let config: AgentLogConfig;
+  const originalBin = process.env.OBSIDIAN_BIN;
 
   beforeEach(() => {
     tmpDir = makeTmpDir();
     config = { vault: tmpDir };
+    // Disable CLI so tests use hardcoded Daily/ path with the test date
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
     mkdirSync(join(tmpDir, "Daily"), { recursive: true });
   });
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+    if (originalBin === undefined) {
+      delete process.env.OBSIDIAN_BIN;
+    } else {
+      process.env.OBSIDIAN_BIN = originalBin;
+    }
   });
 
   // N1: new file — creates ## AgentLog + > 🕐 + #### section

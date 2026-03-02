@@ -9,6 +9,7 @@ import {
   buildProjectHeader,
   buildProjectMetadata,
 } from "./schema/daily-note.js";
+import { cliDailyPath } from "./obsidian-cli.js";
 
 /** Zero-pads a number to 2 digits. */
 function pad2(n: number): string {
@@ -23,6 +24,12 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string {
     const dd = pad2(date.getDate());
     return join(config.vault, `${yyyy}-${mm}-${dd}.md`);
   }
+
+  // Try Obsidian CLI first (respects user's Daily Notes folder setting)
+  const relativePath = cliDailyPath();
+  if (relativePath) return join(config.vault, relativePath);
+
+  // Fallback: hardcoded {vault}/Daily/
   return join(config.vault, "Daily", dailyNoteFileName(date));
 }
 
