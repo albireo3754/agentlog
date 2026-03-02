@@ -1,6 +1,6 @@
 {
-  "name": "agentlog",
-  "version": "0.1.0",
+  "name": "@albireo3754/agentlog",
+  "version": "0.1.1",
   "description": "Claude Code prompts → Obsidian Daily Note auto-logger",
   "type": "module",
   "bin": {
@@ -22,6 +22,7 @@
   "files": [
     "src",
     "!src/__tests__",
+    "scripts",
     "README.md",
     "LICENSE",
     "docs"
