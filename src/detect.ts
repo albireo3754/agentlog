@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
-import { resolveCliBin } from "./obsidian-cli.js";
+import { resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
 
 export interface DetectedVault {
   path: string;
@@ -82,8 +82,7 @@ export function detectCli(): CliDetection {
     encoding: "utf-8",
     timeout: 3000,
   });
-  const versionLines = (ver.stdout ?? "").trim().split("\n").filter(Boolean);
-  const version = ver.status === 0 ? (versionLines.at(-1) ?? "").trim() || null : null;
+  const version = ver.status === 0 ? parseCliVersion(ver.stdout ?? "") : null;
 
   return { installed: true, binPath, version };
 }

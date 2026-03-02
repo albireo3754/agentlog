@@ -8,26 +8,15 @@
  *   agentlog hook                     — invoked by Claude Code UserPromptSubmit hook
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
+import { existsSync, readFileSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
 import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./config.js";
 import { detectVaults, detectCli } from "./detect.js";
-import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin } from "./obsidian-cli.js";
+import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
+import { registerHook, unregisterHook, isHookRegistered, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
 import * as readline from "readline";
-
-const CLAUDE_SETTINGS_PATH = join(homedir(), ".claude", "settings.json");
-
-const HOOK_ENTRY = {
-  matcher: "",
-  hooks: [
-    {
-      type: "command",
-      command: "agentlog hook",
-    },
-  ],
-};
 
 function usage(): void {
   console.log(`Usage:
@@ -216,42 +205,6 @@ async function cmdDetect(): Promise<void> {
   }
 }
 
-function unregisterHook(): boolean {
-  if (!existsSync(CLAUDE_SETTINGS_PATH)) return false;
-
-  let settings: Record<string, unknown>;
-  try {
-    settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8"));
-  } catch {
-    return false;
-  }
-
-  const hooks = settings["hooks"] as Record<string, unknown> | undefined;
-  if (!hooks || !Array.isArray(hooks["UserPromptSubmit"])) return false;
-
-  const before = hooks["UserPromptSubmit"] as unknown[];
-  const after = before.filter(
-    (entry) =>
-      !(
-        typeof entry === "object" &&
-        entry !== null &&
-        Array.isArray((entry as Record<string, unknown>)["hooks"]) &&
-        ((entry as Record<string, unknown>)["hooks"] as unknown[]).some(
-          (h) =>
-            typeof h === "object" &&
-            h !== null &&
-            (h as Record<string, unknown>)["command"] === "agentlog hook"
-        )
-      )
-  );
-
-  if (after.length === before.length) return false; // nothing removed
-
-  hooks["UserPromptSubmit"] = after;
-  writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
-  return true;
-}
-
 async function cmdUninstall(args: string[]): Promise<void> {
   const skipConfirm = args.includes("-y");
   const cfgDir = configDir();
@@ -281,77 +234,6 @@ async function cmdUninstall(args: string[]): Promise<void> {
   }
 
   console.log("\nAgentLog uninstalled.");
-}
-
-function registerHook(): void {
-  // Ensure ~/.claude exists
-  mkdirSync(join(homedir(), ".claude"), { recursive: true });
-
-  let settings: Record<string, unknown> = {};
-
-  if (existsSync(CLAUDE_SETTINGS_PATH)) {
-    try {
-      settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8"));
-    } catch {
-      // If parse fails, start fresh
-      settings = {};
-    }
-  }
-
-  // Ensure hooks.UserPromptSubmit array exists
-  if (typeof settings["hooks"] !== "object" || settings["hooks"] === null) {
-    settings["hooks"] = {};
-  }
-  const hooks = settings["hooks"] as Record<string, unknown>;
-
-  if (!Array.isArray(hooks["UserPromptSubmit"])) {
-    hooks["UserPromptSubmit"] = [];
-  }
-  const upsArr = hooks["UserPromptSubmit"] as unknown[];
-
-  // Idempotent: only add if not already registered
-  const alreadyRegistered = upsArr.some(
-    (entry) =>
-      typeof entry === "object" &&
-      entry !== null &&
-      Array.isArray((entry as Record<string, unknown>)["hooks"]) &&
-      ((entry as Record<string, unknown>)["hooks"] as unknown[]).some(
-        (h) =>
-          typeof h === "object" &&
-          h !== null &&
-          (h as Record<string, unknown>)["command"] === "agentlog hook"
-      )
-  );
-
-  if (!alreadyRegistered) {
-    upsArr.push(HOOK_ENTRY);
-  }
-
-  writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
-}
-
-/** Returns true if the agentlog hook is registered in ~/.claude/settings.json */
-function isHookRegistered(): boolean {
-  if (!existsSync(CLAUDE_SETTINGS_PATH)) return false;
-  try {
-    const settings = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8")) as Record<string, unknown>;
-    const hooks = settings["hooks"] as Record<string, unknown> | undefined;
-    if (!hooks || !Array.isArray(hooks["UserPromptSubmit"])) return false;
-    return (hooks["UserPromptSubmit"] as unknown[]).some(
-      (entry) =>
-        typeof entry === "object" &&
-        entry !== null &&
-        Array.isArray((entry as Record<string, unknown>)["hooks"]) &&
-        ((entry as Record<string, unknown>)["hooks"] as unknown[]).some(
-          (h) =>
-            typeof h === "object" &&
-            h !== null &&
-            (h as Record<string, unknown>)["command"] === "agentlog hook"
-        )
-    );
-  } catch {
-    return false;
-  }
 }
 
 /** agentlog doctor — check installation health */
@@ -401,13 +283,7 @@ async function cmdDoctor(): Promise<void> {
     );
   }
 
-  // 3. Write mode
-  if (config) {
-    const mode = config.writeMode ?? "auto";
-    check("writeMode", true, mode, undefined);
-  }
-
-  // 4. Obsidian app installed (macOS only, skip for plain mode)
+  // 3. Obsidian app installed (macOS only, skip for plain mode)
   if (process.platform === "darwin" && (!config || !config.plain)) {
     const obsidianPaths = [
       "/Applications/Obsidian.app",
@@ -437,8 +313,7 @@ async function cmdDoctor(): Promise<void> {
       // 5a. CLI version + minimum version check
       const cliVer = spawnSync(cliBinPath, ["version"], { encoding: "utf-8", timeout: 3000 });
       // stdout may contain warning lines before the version; take the last non-empty line
-      const versionLines = (cliVer.stdout ?? "").trim().split("\n").filter(Boolean);
-      const version = cliVer.status === 0 ? (versionLines.at(-1) ?? "").trim() : "";
+      const version = cliVer.status === 0 ? (parseCliVersion(cliVer.stdout ?? "") ?? "") : "";
       if (version) {
         const meetsMin = isVersionAtLeast(version, MIN_CLI_VERSION);
         check(

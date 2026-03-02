@@ -62,7 +62,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   beforeEach(() => {
     tmpDir = makeTmpDir();
-    config = { vault: tmpDir, writeMode: "file" };
+    config = { vault: tmpDir };
     mkdirSync(join(tmpDir, "Daily"), { recursive: true });
   });
 

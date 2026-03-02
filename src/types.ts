@@ -4,13 +4,6 @@
 export interface AgentLogConfig {
   vault: string;
   plain?: boolean;
-  /**
-   * Write strategy for Daily Notes:
-   * - "auto" (default): try CLI first, fallback to file write
-   * - "cli": prefer CLI, fallback to file write on failure
-   * - "file": always use direct file write (skip CLI)
-   */
-  writeMode?: "cli" | "file" | "auto";
 }
 
 /** A single log entry to be written into a Daily Note */
