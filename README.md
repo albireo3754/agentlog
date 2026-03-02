@@ -2,7 +2,7 @@
 
 Claude Code prompts → Obsidian Daily Note, automatically.
 
-Every time you type a prompt in Claude Code, AgentLog captures it and appends it to your Obsidian Daily Note — with timestamps, organized by timeblock.
+Every time you type a prompt in Claude Code, AgentLog captures it and appends it to your Obsidian Daily Note — with timestamps, grouped by project and session.
 
 ```
 npx agentlog init ~/Obsidian
@@ -21,13 +21,25 @@ Claude Code prompt → UserPromptSubmit hook → Daily Note append
 **After:**
 
 ```markdown
-## 오전 (08-13)
-- [x] 10 - 12
-  - 10:53 agentlog 개발을 위해서 작업 진행
-  - 11:07 스펙 문서 열어봐
-  - 11:21 git init하고 vscode로 열어봐
-- [ ] 12 - 13
+## AgentLog
+> 🕐 11:21 — js/agentlog › git init하고 vscode로 열어봐
+
+#### 10:53 · js/agentlog
+<!-- cwd=/Users/you/work/js/agentlog -->
+- - - - [[ses_a1b2c3d4]]
+- 10:53 agentlog 개발을 위해서 작업 진행
+- 11:07 스펙 문서 열어봐
+- - - - [[ses_e5f6a7b8]]
+- 11:21 git init하고 vscode로 열어봐
 ```
+
+| Element | Role |
+|---------|------|
+| `> 🕐 HH:MM — project › prompt` | Latest entry (always updated) |
+| `#### HH:MM · project` | Project subsection (grouped by cwd) |
+| `<!-- cwd=... -->` | Section matching key (hidden in Obsidian) |
+| `- - - - [[ses_...]]` | Session boundary (Obsidian wiki-link) |
+| `- HH:MM prompt` | Individual log entry |
 
 No manual logging. No copy-paste. No AI summarization overhead.
 
@@ -45,8 +57,7 @@ npx agentlog init ~/path/to/vault
 
 - [Claude Code](https://claude.ai/code) (hook integration)
 - [Obsidian](https://obsidian.md) (Daily Note target)
-- [Bun](https://bun.sh) (>=1.0.0, supports `bunx`)
-- [Node.js](https://nodejs.org) >=20 + npm (supports `npx`)
+- [Bun](https://bun.sh) (>=1.0.0) or [Node.js](https://nodejs.org) >=20
 
 ## Usage
 
@@ -64,6 +75,8 @@ This does two things:
 1. Creates `~/.agentlog/config.json` with your vault path
 2. Registers a hook in `~/.claude/settings.json`
 
+Run `agentlog init` without arguments to auto-detect installed vaults.
+
 ### That's It
 
 Use Claude Code normally. Every prompt you type gets logged to your Daily Note.
@@ -72,45 +85,38 @@ Use Claude Code normally. Every prompt you type gets logged to your Daily Note.
 
 1. You type a prompt in Claude Code
 2. Claude Code fires the `UserPromptSubmit` hook
-3. AgentLog reads the prompt from stdin
-4. Finds your Daily Note: `{vault}/Daily/{YYYY-MM-DD}-{요일}.md`
-5. Finds the matching timeblock (e.g., 10:53 → `10 - 12`)
-6. Appends: `  - 10:53 your prompt here`
-7. Marks the timeblock checkbox `[x]`
+3. AgentLog reads the prompt from stdin and sanitizes it
+4. Finds your Daily Note: `{vault}/Daily/YYYY-MM-DD-요일.md`
+5. Finds or creates a `## AgentLog` section
+6. Finds or creates a `#### project` subsection matching the current working directory
+7. Inserts a session divider `[[ses_...]]` if the session changed, then appends the entry
+8. Updates the `> 🕐` latest-entry line at the top of the section
 
 Total overhead: < 50ms per prompt. Fire-and-forget, never blocks Claude Code.
 
 ## Daily Note Format
 
-### With Timeblocks (Korean format)
+### Obsidian Mode (default)
 
-If your Daily Note has timeblock headers, entries go under the matching block:
+Entries go to `{vault}/Daily/YYYY-MM-DD-요일.md` under a `## AgentLog` section.
 
-```markdown
-## 오전 (08-13)
-- [ ] 08 - 09
-- [x] 10 - 12
-  - 10:53 agentlog 개발을 위해서 작업 진행
-  - 11:07 스펙 문서 열어봐
-- [ ] 12 - 13
-```
-
-Supported timeblocks:
-
-| Period | Blocks |
-|--------|--------|
-| 새벽 (00-08) | 00-02, 02-04, 04-06, 06-08 |
-| 오전 (08-13) | 08-09, 09-10, 10-12, 12-13 |
-| 오후 (13-17) | 13-15, 15-17 |
-| 저녁 (17-24) | 17-19, 19-21, 21-23, 23-24 |
-
-### Without Timeblocks (fallback)
-
-If no timeblock pattern is found, entries append to an `## AgentLog` section:
+Each working directory gets its own `#### project` subsection. Session changes insert a `[[ses_...]]` wiki-link divider. The `> 🕐` blockquote at the top always shows the latest entry across all projects.
 
 ```markdown
 ## AgentLog
+> 🕐 14:30 — kotlin/message-gate › API 응답 수정
+
+#### 10:53 · js/agentlog
+<!-- cwd=/Users/you/work/js/agentlog -->
+- - - - [[ses_a1b2c3d4]]
 - 10:53 agentlog 개발을 위해서 작업 진행
+- 11:07 스펙 문서 열어봐
+
+#### 14:00 · kotlin/message-gate
+<!-- cwd=/Users/you/work/kotlin/message-gate -->
+- - - - [[ses_e5f6a7b8]]
+- 14:00 API 응답 수정
+- 14:30 테스트 실행
 ```
 
 ### Plain Mode
@@ -118,73 +124,67 @@ If no timeblock pattern is found, entries append to an `## AgentLog` section:
 With `--plain`, entries go to `{folder}/YYYY-MM-DD.md`:
 
 ```markdown
+# 2026-03-02
 - 10:53 agentlog 개발을 위해서 작업 진행
 ```
 
-## No Obsidian? No Problem
+## CLI Reference
 
-If Obsidian isn't installed, `agentlog init` tells you:
+| Command | Description |
+|---------|-------------|
+| `agentlog init [vault] [--plain]` | Vault 경로 설정 + Claude Code hook 등록. 인자 없으면 자동 감지 |
+| `agentlog detect` | 설치된 Obsidian vault 목록 + CLI 상태 표시 |
+| `agentlog doctor` | 설치 상태 헬스체크 (binary, vault, hook, Obsidian CLI 등) |
+| `agentlog open` | 오늘의 Daily Note를 Obsidian에서 열기 (CLI 1.12+ 필요) |
+| `agentlog uninstall [-y]` | Hook 제거 + `~/.agentlog/` 삭제. `-y`로 확인 생략 |
+| `agentlog hook` | Claude Code가 자동 호출 (사용자 직접 실행 X) |
 
-```
-⚠ Obsidian vault가 감지되지 않았습니다.
+## Configuration
 
-1. Obsidian 설치: https://obsidian.md/download
-2. vault 생성 후 다시 실행:
-   npx agentlog init /path/to/your/vault
+`~/.agentlog/config.json`:
 
-또는 일반 폴더에 기록하려면:
-   npx agentlog init --plain ~/notes
-```
+| Field | Default | Description |
+|-------|---------|-------------|
+| `vault` | (required) | Obsidian vault 또는 plain 폴더 경로 |
+| `plain` | `false` | Plain 모드 (Obsidian 없이 단순 파일 기록) |
+| `writeMode` | `"auto"` | `"auto"`: CLI 우선 → file fallback, `"file"`: 직접 쓰기, `"cli"`: CLI 우선 |
+
+환경변수:
+
+| Variable | Description |
+|----------|-------------|
+| `AGENTLOG_CONFIG_DIR` | Config 디렉토리 오버라이드 (기본: `~/.agentlog`) |
+| `OBSIDIAN_BIN` | Obsidian CLI 바이너리 경로 오버라이드 |
 
 ## Uninstall
 
 ```bash
-# Remove hook from Claude Code
-# Edit ~/.claude/settings.json and remove the agentlog entry
-
-# Remove config
-rm -rf ~/.agentlog
+agentlog uninstall
 ```
 
-## Project Structure
-
-```
-src/
-├── cli.ts              # CLI entry point (init, hook)
-├── hook.ts             # Claude Code hook handler
-├── note-writer.ts      # Daily Note append logic
-├── config.ts           # Config load/save
-├── types.ts            # TypeScript interfaces
-└── schema/
-    ├── hook-input.ts   # Hook input schema (SOT)
-    └── daily-note.ts   # Timeblock definitions (SOT)
-```
+Hook을 `~/.claude/settings.json`에서 제거하고 `~/.agentlog/`를 삭제합니다.
 
 ## Development
 
 ```bash
 bun install
-bun test          # 74 tests
-bun run typecheck # tsc --noEmit
-bun run build     # compile to dist/ (optional)
+bun test              # 120 pass / 120 tests
+bun run typecheck     # tsc --noEmit
+bun run build         # compile to dist/ (optional)
 ```
 
-### Local Development (no build step)
-
-`bin` points directly to `src/cli.ts`. Bun runs TypeScript natively, so there's no build step during development.
+`bin`이 `src/cli.ts`를 직접 가리키므로 개발 중 빌드 불필요 — Bun이 TypeScript를 네이티브 실행합니다.
 
 ```bash
-# One-time: link agentlog as a global command
+# 글로벌 커맨드로 링크
 bun link
 
-# Edit src/cli.ts → changes are live immediately
-agentlog --help
+# 소스 수정 → 즉시 반영
+agentlog doctor
 
-# Watch mode (auto-restart on save)
+# Watch 모드
 bun run dev:watch
 ```
-
-`bun link` symlinks the global `agentlog` command to the source directory. Every invocation picks up the latest `src/cli.ts` — no rebuild needed.
 
 ## Roadmap
 
