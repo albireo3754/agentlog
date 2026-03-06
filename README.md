@@ -7,6 +7,7 @@ AgentLog is a local-first Claude Code prompt logger for Obsidian. It captures ev
 Use it as a lightweight developer journal, worklog capture layer, or the first building block for richer Daily Notes automation.
 
 ```bash
+# Requires Bun (https://bun.sh) installed and available on your PATH
 npm install -g @albireo3754/agentlog
 agentlog init ~/Obsidian
 ```
