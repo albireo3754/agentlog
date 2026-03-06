@@ -55,10 +55,10 @@ Warning: Obsidian vault not detected at: ${vault}
 
 1. Install Obsidian: https://obsidian.md/download
 2. Open the folder as a vault, then run:
-   npx agentlog init /path/to/your/vault
+   agentlog init /path/to/your/vault
 
 Or to write to a plain folder:
-   npx agentlog init --plain ~/notes
+   agentlog init --plain ~/notes
 `);
       process.exit(1);
     }
@@ -259,7 +259,12 @@ async function cmdDoctor(): Promise<void> {
   // 1. Binary in PATH
   const which = spawnSync("which", ["agentlog"], { encoding: "utf-8" });
   const binPath = which.status === 0 ? which.stdout.trim() : "";
-  check("binary", !!binPath, binPath || "not found in PATH", "run: npm install -g agentlog");
+  check(
+    "binary",
+    !!binPath,
+    binPath || "not found in PATH",
+    "install agentlog globally (e.g. npm install -g @albireo3754/agentlog or bun install -g @albireo3754/agentlog)"
+  );
 
   // 2. Vault (covers both config presence and vault validity)
   const config = loadConfig();
