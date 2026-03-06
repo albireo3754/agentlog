@@ -1,10 +1,27 @@
 {
   "name": "@albireo3754/agentlog",
   "version": "0.1.1",
-  "description": "Claude Code prompts → Obsidian Daily Note auto-logger",
+  "description": "Auto-log Claude Code prompts to Obsidian Daily Notes",
   "type": "module",
   "bin": {
     "agentlog": "./src/cli.ts"
+  },
+  "keywords": [
+    "claude-code",
+    "obsidian",
+    "daily-notes",
+    "prompt-logging",
+    "developer-journal",
+    "worklog",
+    "hook"
+  ],
+  "homepage": "https://github.com/albireo3754/agentlog#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/albireo3754/agentlog.git"
+  },
+  "bugs": {
+    "url": "https://github.com/albireo3754/agentlog/issues"
   },
   "scripts": {
     "build": "bun build src/cli.ts src/hook.ts --outdir dist --target node",
