@@ -1,8 +1,10 @@
 # AgentLog
 
-Claude Code prompts → Obsidian Daily Note, automatically.
+Auto-log Claude Code prompts to Obsidian Daily Notes.
 
-Every time you type a prompt in Claude Code, AgentLog captures it and appends it to your Obsidian Daily Note — with timestamps, grouped by project and session.
+AgentLog is a local-first Claude Code prompt logger for Obsidian. It captures every prompt you type in Claude Code and appends it to today's Daily Note, grouped by project and session.
+
+Use it as a lightweight developer journal, worklog capture layer, or the first building block for richer Daily Notes automation.
 
 ```
 npx agentlog init ~/Obsidian
@@ -15,6 +17,13 @@ That's it. Start using Claude Code and your Daily Note fills itself.
 ```
 Claude Code prompt → UserPromptSubmit hook → Daily Note append
 ```
+
+## Why AgentLog
+
+- Local-first prompt logging with no external service required
+- Obsidian Daily Notes integration that works with your existing vault
+- Project and session grouping so prompts stay readable later
+- Zero copy-paste overhead during normal Claude Code use
 
 **Before:** You finish a 3-hour Claude Code session. Your Daily Note is empty.
 
