@@ -263,7 +263,7 @@ async function cmdDoctor(): Promise<void> {
     "binary",
     !!binPath,
     binPath || "not found in PATH",
-    "run: npm install -g @albireo3754/agentlog"
+    "install agentlog globally (e.g. npm install -g @albireo3754/agentlog or bun install -g @albireo3754/agentlog)"
   );
 
   // 2. Vault (covers both config presence and vault validity)
