@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir, tmpdir } from "os";
+import { fileURLToPath } from "url";
 
 /**
  * CLI tests use a subprocess approach: spawn `bun run src/cli.ts` with arguments
@@ -15,7 +16,7 @@ import { homedir, tmpdir } from "os";
  * by temporarily overriding HOME env var.
  */
 
-const PROJECT_ROOT = "/Users/pray/work/js/agentlog";
+const CLI_PATH = fileURLToPath(new URL("../cli.ts", import.meta.url));
 
 async function runCli(
   args: string[],
@@ -23,7 +24,7 @@ async function runCli(
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const env = { ...process.env, ...opts };
   const proc = Bun.spawn(
-    ["bun", "run", join(PROJECT_ROOT, "src/cli.ts"), ...args],
+    ["bun", "run", CLI_PATH, ...args],
     {
       stdout: "pipe",
       stderr: "pipe",
