@@ -16,7 +16,7 @@ import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./con
 import { detectVaults, detectCli } from "./detect.js";
 import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
 import { registerHook, unregisterHook, isHookRegistered, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
-import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo } from "./version-info.js";
+import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo, readVersion, resolvePackageRoot } from "./version-info.js";
 import * as readline from "readline";
 
 function usage(): void {
@@ -240,8 +240,8 @@ async function cmdUninstall(args: string[]): Promise<void> {
 
 /** agentlog doctor — check installation health */
 async function cmdDoctor(): Promise<void> {
-  const runtimeInfo = getRuntimeInfo();
-  if (runtimeInfo.version) console.log(`${formatVersionHeadline(runtimeInfo)}\n`);
+  const version = readVersion(resolvePackageRoot());
+  if (version) console.log(`${formatVersionHeadline({ version })}\n`);
 
   let allOk = true;
 

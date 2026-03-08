@@ -24,7 +24,7 @@ function currentModuleDir(): string {
     : dirname(fileURLToPath(import.meta.url));
 }
 
-function resolvePackageRoot(moduleDir: string = currentModuleDir()): string {
+export function resolvePackageRoot(moduleDir: string = currentModuleDir()): string {
   return resolve(moduleDir, "..");
 }
 
@@ -40,7 +40,7 @@ function hasGitMetadata(startDir: string): boolean {
   }
 }
 
-function readVersion(packageRoot: string): string | null {
+export function readVersion(packageRoot: string): string | null {
   try {
     const pkg = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf-8")) as {
       version?: string;
@@ -75,9 +75,12 @@ function readCommit(packageRoot: string, channel: AgentlogChannel): string | nul
 }
 
 export function getRuntimeInfo(options: RuntimeInfoOptions = {}): RuntimeInfo {
+  const env = options.env ?? process.env;
   const packageRoot = options.packageRoot ?? resolvePackageRoot(options.moduleDir);
-  const channel = detectPhase({ ...options, packageRoot });
   const gitBacked = hasGitMetadata(packageRoot);
+  const override = env.AGENTLOG_PHASE?.trim().toLowerCase();
+  const channel: AgentlogChannel =
+    override === "dev" || override === "prod" ? override : gitBacked ? "dev" : "prod";
 
   return {
     version: readVersion(packageRoot),
