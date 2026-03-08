@@ -152,6 +152,7 @@ With `--plain`, entries go to `{folder}/YYYY-MM-DD.md`:
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
 | `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12+) |
+| `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel, source, and commit |
 | `agentlog uninstall [-y]` | Remove the hook and delete `~/.agentlog/`. Use `-y` to skip confirmation |
 | `agentlog hook` | Invoked automatically by Claude Code (not for direct use) |
 
@@ -169,7 +170,27 @@ Environment variables:
 | Variable | Description |
 |----------|-------------|
 | `AGENTLOG_CONFIG_DIR` | Override the config directory (default: `~/.agentlog`) |
+| `AGENTLOG_PHASE` | Force the runtime channel (`dev` or `prod`), overriding auto-detection |
 | `OBSIDIAN_BIN` | Override the Obsidian CLI binary path |
+
+`agentlog version`은 현재 실행 중인 AgentLog의 build identity를 출력합니다.
+
+- `prod`: 헤드라인만 출력
+
+```text
+AgentLog 0.1.1
+```
+
+- `dev`: 개발 실행임을 나타내는 메타데이터를 추가 출력
+
+```text
+AgentLog 0.1.1
+channel: dev
+source: git worktree
+commit: <short-sha>
+```
+
+기본 규칙은 git 메타데이터가 있는 checkout/link 실행이면 `dev`, 패키지 설치본이면 `prod`입니다. 테스트나 디버깅에서 channel을 고정하고 싶다면 `AGENTLOG_PHASE=dev` 또는 `AGENTLOG_PHASE=prod`를 사용할 수 있습니다.
 
 ## Uninstall
 
