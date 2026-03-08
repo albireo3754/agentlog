@@ -8,7 +8,6 @@ export type AgentlogChannel = "dev" | "prod";
 export type RuntimeInfo = {
   version: string | null;
   channel: AgentlogChannel;
-  source: string | null;
   commit: string | null;
   packageRoot: string;
 };
@@ -83,7 +82,6 @@ export function getRuntimeInfo(options: RuntimeInfoOptions = {}): RuntimeInfo {
   return {
     version: readVersion(packageRoot),
     channel,
-    source: channel === "dev" && gitBacked ? "git worktree" : null,
     commit: channel === "dev" && gitBacked ? readCommit(packageRoot, channel) : null,
     packageRoot,
   };
@@ -98,7 +96,6 @@ export function formatVersionOutput(info: RuntimeInfo): string {
 
   if (info.channel === "dev") {
     lines.push("channel: dev");
-    if (info.source) lines.push(`source: ${info.source}`);
     if (info.commit) lines.push(`commit: ${info.commit}`);
   }
 

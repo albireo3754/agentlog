@@ -68,7 +68,6 @@ describe("getRuntimeInfo", () => {
     ).toEqual({
       version: "9.9.9",
       channel: "prod",
-      source: null,
       commit: null,
       packageRoot: tmpDir,
     });
@@ -83,7 +82,6 @@ describe("getRuntimeInfo", () => {
     ).toEqual({
       version: "9.9.9",
       channel: "dev",
-      source: null,
       commit: null,
       packageRoot: tmpDir,
     });
@@ -96,32 +94,29 @@ describe("formatVersionOutput", () => {
       formatVersionOutput({
         version: "0.1.1",
         channel: "prod",
-        source: null,
-        commit: null,
+          commit: null,
         packageRoot: "/tmp/pkg",
       })
     ).toBe("AgentLog 0.1.1");
   });
 
-  it("formats dev with build metadata lines", () => {
+  it("formats dev with commit", () => {
     expect(
       formatVersionOutput({
         version: "0.1.1",
         channel: "dev",
-        source: "git worktree",
         commit: "67f28cf",
         packageRoot: "/tmp/pkg",
       })
-    ).toBe("AgentLog 0.1.1\nchannel: dev\nsource: git worktree\ncommit: 67f28cf");
+    ).toBe("AgentLog 0.1.1\nchannel: dev\ncommit: 67f28cf");
   });
 
-  it("formats dev without source lines when git metadata is unavailable", () => {
+  it("formats dev without commit when git metadata is unavailable", () => {
     expect(
       formatVersionOutput({
         version: "0.1.1",
         channel: "dev",
-        source: null,
-        commit: null,
+          commit: null,
         packageRoot: "/tmp/pkg",
       })
     ).toBe("AgentLog 0.1.1\nchannel: dev");

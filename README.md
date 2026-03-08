@@ -152,7 +152,7 @@ With `--plain`, entries go to `{folder}/YYYY-MM-DD.md`:
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
 | `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12+) |
-| `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel, source, and commit |
+| `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
 | `agentlog uninstall [-y]` | Remove the hook and delete `~/.agentlog/`. Use `-y` to skip confirmation |
 | `agentlog hook` | Invoked automatically by Claude Code (not for direct use) |
 
@@ -186,7 +186,6 @@ AgentLog 0.1.1
 ```text
 AgentLog 0.1.1
 channel: dev
-source: git worktree
 commit: <short-sha>
 ```
 

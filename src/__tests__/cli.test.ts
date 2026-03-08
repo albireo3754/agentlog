@@ -308,7 +308,7 @@ describe("cli usage", () => {
     const { stdout, exitCode } = await runCli(["version"], { AGENTLOG_PHASE: "dev" });
     expect(exitCode).toBe(0);
     expect(stdout).toMatch(
-      /^AgentLog \d+\.\d+\.\d+\nchannel: dev\nsource: git worktree\ncommit: [0-9a-f]{7}\n?$/
+      /^AgentLog \d+\.\d+\.\d+\nchannel: dev\ncommit: [0-9a-f]{7}\n?$/
     );
   });
 
