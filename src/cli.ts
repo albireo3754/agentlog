@@ -8,7 +8,7 @@
  *   agentlog hook                     — invoked by Claude Code UserPromptSubmit hook
  */
 
-import { existsSync, readFileSync, rmSync } from "fs";
+import { existsSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
@@ -16,6 +16,7 @@ import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./con
 import { detectVaults, detectCli } from "./detect.js";
 import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
 import { registerHook, unregisterHook, isHookRegistered, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
+import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo, readVersion, resolvePackageRoot } from "./version-info.js";
 import * as readline from "readline";
 
 function usage(): void {
@@ -25,6 +26,7 @@ function usage(): void {
   agentlog doctor                   Check installation health
   agentlog open                     Open today's Daily Note in Obsidian (CLI)
   agentlog uninstall                Remove hook and config
+  agentlog version                  Print version and build identity
   agentlog hook                     Run hook (called by Claude Code)
 
 Options:
@@ -238,14 +240,8 @@ async function cmdUninstall(args: string[]): Promise<void> {
 
 /** agentlog doctor — check installation health */
 async function cmdDoctor(): Promise<void> {
-  // Show agentlog version
-  try {
-    const pkgPath = join(import.meta.dir ?? new URL(".", import.meta.url).pathname, "..", "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
-    if (pkg.version) console.log(`agentlog v${pkg.version}\n`);
-  } catch {
-    // version display is best-effort
-  }
+  const version = readVersion(resolvePackageRoot());
+  if (version) console.log(`${formatVersionHeadline({ version })}\n`);
 
   let allOk = true;
 
@@ -395,6 +391,10 @@ async function cmdHook(): Promise<void> {
   await import("./hook.js");
 }
 
+async function cmdVersion(): Promise<void> {
+  console.log(formatVersionOutput(getRuntimeInfo()));
+}
+
 // --- Main dispatch ---
 
 const [, , command, ...rest] = process.argv;
@@ -414,6 +414,9 @@ switch (command) {
     break;
   case "uninstall":
     await cmdUninstall(rest);
+    break;
+  case "version":
+    await cmdVersion();
     break;
   case "hook":
     await cmdHook();
