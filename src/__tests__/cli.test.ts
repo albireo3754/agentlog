@@ -20,7 +20,7 @@ const CLI_PATH = fileURLToPath(new URL("../cli.ts", import.meta.url));
 
 async function runCli(
   args: string[],
-  opts: { HOME?: string; AGENTLOG_CONFIG_DIR?: string } = {}
+  opts: Record<string, string | undefined> = {}
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const env = { ...process.env, ...opts };
   const proc = Bun.spawn(
@@ -235,6 +235,7 @@ describe("cli doctor command", () => {
 
     const { stdout, exitCode } = await runCli(["doctor"], { HOME: tmpHome });
     // binary check may fail in test env; focus on vault/hook checks
+    expect(stdout).toMatch(/AgentLog \d+\.\d+\.\d+/);
     expect(stdout).toContain("vault");
     expect(stdout).toContain("hook");
   });
@@ -298,6 +299,20 @@ describe("cli doctor command", () => {
 });
 
 describe("cli usage", () => {
+  it("prints only the headline in prod for the version command", async () => {
+    const { stdout, exitCode } = await runCli(["version"], { AGENTLOG_PHASE: "prod" });
+    expect(exitCode).toBe(0);
+    expect(stdout.trim()).toMatch(/^AgentLog \d+\.\d+\.\d+$/);
+  });
+
+  it("prints build metadata in dev for the version command", async () => {
+    const { stdout, exitCode } = await runCli(["version"], { AGENTLOG_PHASE: "dev" });
+    expect(exitCode).toBe(0);
+    expect(stdout).toMatch(
+      /^AgentLog \d+\.\d+\.\d+\nchannel: dev\ncommit: [0-9a-f]{7}\n?$/
+    );
+  });
+
   it("prints usage when no command given", async () => {
     const { stdout, exitCode } = await runCli([]);
     // exitCode 0 or 1 depending on implementation, but usage should be printed

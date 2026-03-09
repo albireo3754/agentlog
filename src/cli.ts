@@ -12,7 +12,7 @@
  *   agentlog codex-notify             — invoked by Codex notify on agent-turn-complete
  */
 
-import { existsSync, readFileSync, rmSync } from "fs";
+import { existsSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
@@ -27,6 +27,7 @@ import {
   registerCodexNotify,
   unregisterCodexNotify,
 } from "./codex-settings.js";
+import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo, readVersion, resolvePackageRoot } from "./version-info.js";
 import * as readline from "readline";
 
 function usage(): void {
@@ -38,6 +39,7 @@ function usage(): void {
   agentlog open                     Open today's Daily Note in Obsidian (CLI)
   agentlog uninstall [-y] [--codex | --all]
                                    Remove Claude hook, Codex notify, or both
+  agentlog version                  Print version and build identity
   agentlog hook                     Run hook (called by Claude Code)
   agentlog codex-notify             Run notify handler (called by Codex)
 
@@ -68,10 +70,10 @@ Warning: Obsidian vault not detected at: ${vault}
 
 1. Install Obsidian: https://obsidian.md/download
 2. Open the folder as a vault, then run:
-   npx agentlog init /path/to/your/vault
+   agentlog init /path/to/your/vault
 
 Or to write to a plain folder:
-   npx agentlog init --plain ~/notes
+   agentlog init --plain ~/notes
 `);
       process.exit(1);
     }
@@ -420,7 +422,8 @@ async function cmdUninstall(args: string[]): Promise<void> {
 
 /** agentlog doctor — check installation health */
 async function cmdDoctor(): Promise<void> {
-  printVersion();
+  const version = readVersion(resolvePackageRoot());
+  if (version) console.log(`${formatVersionHeadline({ version })}\n`);
 
   let allOk = true;
 
@@ -433,7 +436,12 @@ async function cmdDoctor(): Promise<void> {
 
   // 1. Binary in PATH
   const binPath = detectBinary("agentlog");
-  check("binary", !!binPath, binPath || "not found in PATH", "run: npm install -g agentlog");
+  check(
+    "binary",
+    !!binPath,
+    binPath || "not found in PATH",
+    "install agentlog globally (e.g. npm install -g @albireo3754/agentlog or bun install -g @albireo3754/agentlog)"
+  );
 
   // 2. Vault (covers both config presence and vault validity)
   const config = loadConfig();
@@ -604,6 +612,10 @@ async function cmdCodexNotify(args: string[]): Promise<void> {
   await runCodexNotify(args[0]);
 }
 
+async function cmdVersion(): Promise<void> {
+  console.log(formatVersionOutput(getRuntimeInfo()));
+}
+
 // --- Main dispatch ---
 
 const [, , command, ...rest] = process.argv;
@@ -623,6 +635,9 @@ switch (command) {
     break;
   case "uninstall":
     await cmdUninstall(rest);
+    break;
+  case "version":
+    await cmdVersion();
     break;
   case "hook":
     await cmdHook();

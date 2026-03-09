@@ -6,11 +6,13 @@ AgentLog is a local-first prompt logger for Obsidian. It captures Claude Code pr
 
 Use it as a lightweight developer journal, worklog capture layer, or the first building block for richer Daily Notes automation.
 
-```
-npx agentlog init ~/Obsidian
+```bash
+# Requires Bun (https://bun.sh) installed and available on your PATH
+npm install -g @albireo3754/agentlog
+agentlog init ~/Obsidian
 ```
 
-That's it. Start using Claude Code and your Daily Note fills itself.
+Install it once, start using Claude Code, and your Daily Note fills itself.
 
 ## What It Does
 
@@ -31,22 +33,22 @@ Claude Code hook / Codex notify → Daily Note append
 
 ```markdown
 ## AgentLog
-> 🕐 11:21 — js/agentlog › git init하고 vscode로 열어봐
+> 🕐 11:21 — js/agentlog › initialize git and open it in VS Code
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
 - - - - [[ses_a1b2c3d4]]
-- 10:53 agentlog 개발을 위해서 작업 진행
-- 11:07 스펙 문서 열어봐
+- 10:53 start building agentlog
+- 11:07 open the spec document
 - - - - [[ses_e5f6a7b8]]
-- 11:21 git init하고 vscode로 열어봐
+- 11:21 initialize git and open it in VS Code
 ```
 
 | Element | Role |
 |---------|------|
 | `> 🕐 HH:MM — project › prompt` | Latest entry (always updated) |
 | `#### HH:MM · project` | Project subsection (grouped by cwd) |
-| `<!-- cwd=... -->` | Section matching key (Reading view에서 숨김) |
+| `<!-- cwd=... -->` | Section matching key (hidden in Obsidian Reading view) |
 | `- - - - [[ses_...]]` | Session boundary (Obsidian wiki-link) |
 | `- HH:MM prompt` | Individual log entry |
 
@@ -56,11 +58,16 @@ No manual logging. No copy-paste. No AI summarization overhead.
 
 ```bash
 # With Bun
-bunx agentlog init ~/path/to/vault
+bun add -g @albireo3754/agentlog
 
 # With npm
-npx agentlog init ~/path/to/vault
+npm install -g @albireo3754/agentlog
+
+# Then configure your vault
+agentlog init ~/path/to/vault
 ```
+
+AgentLog registers the Claude Code hook as `agentlog hook`, so the `agentlog` binary must remain available on your `PATH` after setup.
 
 ### Requirements
 
@@ -110,7 +117,7 @@ Use Claude Code or Codex normally. Claude prompts are logged at prompt-submit ti
 
 1. Claude Code fires `UserPromptSubmit`, or Codex invokes `notify` on `agent-turn-complete`
 2. AgentLog extracts the latest user-visible input and sanitizes it
-3. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12+), fallback: `{vault}/Daily/YYYY-MM-DD-요일.md`
+3. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12+). If that fails, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md`
 4. Finds or creates a `## AgentLog` section
 5. Finds or creates a `#### project` subsection matching the current working directory
 6. Inserts a session divider `[[ses_...]]` if the session changed, then appends the entry
@@ -122,25 +129,25 @@ Total overhead: < 50ms per prompt. Fire-and-forget, never blocks Claude Code.
 
 ### Obsidian Mode (default)
 
-Daily Note 경로는 `obsidian daily:path` CLI 명령으로 동적 해석 (Obsidian 1.12+). Obsidian이 실행 중이 아니거나 CLI를 사용할 수 없으면 `{vault}/Daily/YYYY-MM-DD-요일.md`로 fallback.
+AgentLog resolves the Daily Note path via `obsidian daily:path` when the Obsidian CLI is available (1.12+). If the CLI is unavailable or Obsidian is not running, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md` such as `2026-03-01-일.md`.
 
 Each working directory gets its own `#### project` subsection. Session changes insert a `[[ses_...]]` wiki-link divider. The `> 🕐` blockquote at the top always shows the latest entry across all projects.
 
 ```markdown
 ## AgentLog
-> 🕐 14:30 — kotlin/message-gate › API 응답 수정
+> 🕐 14:30 — kotlin/message-gate › adjust the API response
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
 - - - - [[ses_a1b2c3d4]]
-- 10:53 agentlog 개발을 위해서 작업 진행
-- 11:07 스펙 문서 열어봐
+- 10:53 start building agentlog
+- 11:07 open the spec document
 
 #### 14:00 · kotlin/message-gate
 <!-- cwd=/Users/you/work/kotlin/message-gate -->
 - - - - [[ses_e5f6a7b8]]
-- 14:00 API 응답 수정
-- 14:30 테스트 실행
+- 14:00 adjust the API response
+- 14:30 run tests
 ```
 
 ### Plain Mode
@@ -149,7 +156,7 @@ With `--plain`, entries go to `{folder}/YYYY-MM-DD.md`:
 
 ```markdown
 # 2026-03-02
-- 10:53 agentlog 개발을 위해서 작업 진행
+- 10:53 start building agentlog
 ```
 
 ## CLI Reference
@@ -158,13 +165,14 @@ Current CLI:
 
 | Command | Description |
 |---------|-------------|
-| `agentlog init [vault] [--plain] [--claude\|--codex\|--all]` | default/`--claude`: Claude hook 등록, `--codex`: Codex `notify` 등록, `--all`: 둘 다 설치 |
-| `agentlog detect` | 설치된 Obsidian vault 목록 + CLI 상태 표시 |
-| `agentlog doctor` | 설치 상태 헬스체크. Codex integration이 구성되어 있으면 Codex `notify` 상태도 함께 검사 |
-| `agentlog open` | 오늘의 Daily Note를 Obsidian에서 열기 (CLI 1.12+ 필요) |
-| `agentlog uninstall [-y] [--codex\|--all]` | default: Claude hook + config 제거, `--codex`: Codex `notify`만 제거, `--all`: Claude hook/state 제거 + Codex `notify` 복원 |
-| `agentlog hook` | Claude Code가 자동 호출 (사용자 직접 실행 X) |
-| `agentlog codex-notify` | Codex가 자동 호출 (사용자 직접 실행 X) |
+| `agentlog init [vault] [--plain] [--claude\|--codex\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex notify, `--all`: both |
+| `agentlog detect` | List detected Obsidian vaults and CLI status |
+| `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI. Also checks Codex notify status if configured |
+| `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12+) |
+| `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
+| `agentlog uninstall [-y] [--codex\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex notify only, `--all`: Remove both |
+| `agentlog hook` | Invoked automatically by Claude Code (not for direct use) |
+| `agentlog codex-notify` | Invoked automatically by Codex (not for direct use) |
 
 ## Configuration
 
@@ -172,16 +180,35 @@ Current CLI:
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `vault` | (required) | Obsidian vault 또는 plain 폴더 경로 |
-| `plain` | `false` | Plain 모드 (Obsidian 없이 단순 파일 기록) |
-| `codexNotifyRestore` | unset | 이전 Codex `notify` 명령. Codex runtime forward/uninstall 복원에 사용 |
+| `vault` | (required) | Path to the Obsidian vault or plain output folder |
+| `plain` | `false` | Plain mode that writes simple markdown files without Obsidian integration |
+| `codexNotifyRestore` | unset | Previous Codex `notify` command. Used to forward/restore on Codex uninstall |
 
-환경변수:
+Environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `AGENTLOG_CONFIG_DIR` | Config 디렉토리 오버라이드 (기본: `~/.agentlog`) |
-| `OBSIDIAN_BIN` | Obsidian CLI 바이너리 경로 오버라이드 |
+| `AGENTLOG_CONFIG_DIR` | Override the config directory (default: `~/.agentlog`) |
+| `AGENTLOG_PHASE` | Force the runtime channel (`dev` or `prod`), overriding auto-detection |
+| `OBSIDIAN_BIN` | Override the Obsidian CLI binary path |
+
+`agentlog version`은 현재 실행 중인 AgentLog의 build identity를 출력합니다.
+
+- `prod`: 헤드라인만 출력
+
+```text
+AgentLog 0.1.1
+```
+
+- `dev`: 개발 실행임을 나타내는 메타데이터를 추가 출력
+
+```text
+AgentLog 0.1.1
+channel: dev
+commit: <short-sha>
+```
+
+기본 규칙은 git 메타데이터가 있는 checkout/link 실행이면 `dev`, 패키지 설치본이면 `prod`입니다. 테스트나 디버깅에서 channel을 고정하고 싶다면 `AGENTLOG_PHASE=dev` 또는 `AGENTLOG_PHASE=prod`를 사용할 수 있습니다.
 
 ## Uninstall
 
@@ -191,7 +218,7 @@ Claude-only uninstall:
 agentlog uninstall
 ```
 
-Hook을 `~/.claude/settings.json`에서 제거하고 `~/.agentlog/`를 삭제합니다.
+This removes the hook from `~/.claude/settings.json` and deletes `~/.agentlog/`.
 
 Codex-only uninstall:
 
@@ -211,25 +238,25 @@ Codex 상태 확인은 별도 명령 대신 기존 `agentlog doctor`에 포함�
 
 ```bash
 bun install
-bun test
+bun test              # run the test suite
 bun run test:install-smoke
-bun run typecheck     # tsc --noEmit
+bun run typecheck     # run tsc --noEmit
 bun run build         # compile to dist/ (optional)
 ```
 
-`bin`이 `src/cli.ts`를 직접 가리키므로 개발 중 빌드 불필요 — Bun이 TypeScript를 네이티브 실행합니다.
+The `bin` entry points directly to `src/cli.ts`, so you do not need a build during development. Bun runs TypeScript natively.
 
 ```bash
-# 글로벌 커맨드로 링크
+# Link as a global command
 bun link
 
-# 소스 수정 → 즉시 반영
+# Edit source and run immediately
 agentlog doctor
 
-# 격리된 bun link 설치 smoke
+# Isolated bun link install smoke test
 bun run test:install-smoke
 
-# Watch 모드
+# Watch mode
 bun run dev:watch
 ```
 
