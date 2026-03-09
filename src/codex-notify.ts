@@ -20,6 +20,7 @@ function forwardNotify(raw: string, restore: string[] | null | undefined): void 
   const [command, ...args] = restore;
   const result = spawnSync(command, [...args, raw], {
     encoding: "utf-8",
+    timeout: 10_000,
   });
 
   if (result.error || result.status !== 0) {

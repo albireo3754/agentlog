@@ -49,9 +49,11 @@ function parseSingleLineNotify(line: string): string[] {
 
   const eqIdx = trimmed.indexOf("=");
   const value = trimmed.slice(eqIdx + 1).trim();
+  // Normalize TOML literal strings (single-quoted) to JSON double-quoted strings
+  const normalized = value.replace(/'([^']*)'/g, '"$1"');
   let parsed: unknown;
   try {
-    parsed = JSON.parse(value);
+    parsed = JSON.parse(normalized);
   } catch {
     throw new Error("Unsupported notify configuration: expected a single-line string array");
   }
@@ -121,8 +123,10 @@ export function installCodexNotify(
     throw err instanceof Error ? err : new Error(String(err));
   }
 
-  const state = inspectCodexNotifyState(search.line);
-  if (state.kind === "registered") {
+  const alreadyRegistered =
+    parsed.length === AGENTLOG_CODEX_NOTIFY_COMMAND.length &&
+    parsed.every((part, i) => part === AGENTLOG_CODEX_NOTIFY_COMMAND[i]);
+  if (alreadyRegistered) {
     return {
       toml,
       restoreNotify: currentRestore,

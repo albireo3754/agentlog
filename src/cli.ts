@@ -415,6 +415,14 @@ async function cmdUninstall(args: string[]): Promise<void> {
 
   if (target === "all") {
     uninstallCodex(false);
+  } else {
+    // Check if Codex notify is still registered
+    const config = loadConfig();
+    if (config?.codexNotifyRestore) {
+      console.warn(
+        "⚠️  Codex notify is still registered. Run `agentlog uninstall --all` to also remove it."
+      );
+    }
   }
 
   uninstallClaude(cfgDir);

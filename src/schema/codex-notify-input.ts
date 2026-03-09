@@ -52,7 +52,7 @@ export function parseCodexNotifyInput(raw: string): ParsedCodexNotifyInput | nul
     .find((message) => typeof message === "string" && message.trim().length > 0);
 
   if (typeof prompt !== "string") {
-    throw new Error("Missing required field: input-messages");
+    throw new Error("Field input-messages must contain at least one non-empty string message");
   }
 
   return {

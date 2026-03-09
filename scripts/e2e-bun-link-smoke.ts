@@ -64,6 +64,7 @@ async function main(): Promise<void> {
       HOME: home,
       BUN_INSTALL: bunInstall,
       PATH: `${binDir}:${join(bunInstall, "bin")}:${bunBinDir}:/usr/bin:/bin`,
+      AGENTLOG_CONFIG_DIR: join(home, ".agentlog"),
     };
 
     writeExecutable(join(binDir, "codex"), "#!/bin/sh\nexit 0\n");
