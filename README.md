@@ -1,8 +1,8 @@
 # AgentLog
 
-Auto-log Claude Code prompts to Obsidian Daily Notes.
+Auto-log Claude Code prompts and Codex turns to Obsidian Daily Notes.
 
-AgentLog is a local-first Claude Code prompt logger for Obsidian. It captures every prompt you type in Claude Code and appends it to today's Daily Note, grouped by project and session.
+AgentLog is a local-first prompt logger for Obsidian. It captures Claude Code prompts and Codex CLI turn inputs, then appends them to today's Daily Note, grouped by project and session.
 
 Use it as a lightweight developer journal, worklog capture layer, or the first building block for richer Daily Notes automation.
 
@@ -17,7 +17,7 @@ Install it once, start using Claude Code, and your Daily Note fills itself.
 ## What It Does
 
 ```
-Claude Code prompt → UserPromptSubmit hook → Daily Note append
+Claude Code hook / Codex notify → Daily Note append
 ```
 
 ## Why AgentLog
@@ -71,7 +71,7 @@ AgentLog registers the Claude Code hook as `agentlog hook`, so the `agentlog` bi
 
 ### Requirements
 
-- [Claude Code](https://claude.ai/code) (hook integration)
+- [Claude Code](https://claude.ai/code) (hook integration) or [Codex CLI](https://developers.openai.com/codex) (`notify` integration)
 - [Obsidian](https://obsidian.md) (Daily Note target)
 - [Bun](https://bun.sh) (>=1.0.0) or [Node.js](https://nodejs.org) >=20
 
@@ -79,34 +79,49 @@ AgentLog registers the Claude Code hook as `agentlog hook`, so the `agentlog` bi
 
 ### Setup
 
+Unified CLI:
+
 ```bash
-# Point to your Obsidian vault
+# Claude Code
 agentlog init ~/Obsidian
 
-# Or use any folder (no Obsidian required)
+# Codex
+agentlog init --codex ~/Obsidian
+
+# Claude + Codex
+agentlog init --all ~/Obsidian
+
+# Plain folder
 agentlog init --plain ~/notes
 ```
 
-This does two things:
+`agentlog init` does two things:
 1. Creates `~/.agentlog/config.json` with your vault path
 2. Registers a hook in `~/.claude/settings.json`
 
 Run `agentlog init` without arguments to auto-detect installed vaults.
 
+`agentlog init --codex`:
+1. Verifies that Codex CLI is installed and available in `PATH`
+2. Creates or updates `~/.agentlog/config.json`
+3. Registers `notify = ["agentlog", "codex-notify"]` in `~/.codex/config.toml`
+4. Preserves an existing Codex `notify` command for runtime forwarding
+
+The `default = --all` variant is intentionally not supported. `agentlog init` stays Claude-first for backward compatibility and to avoid failing on machines without Codex CLI.
+
 ### That's It
 
-Use Claude Code normally. Every prompt you type gets logged to your Daily Note.
+Use Claude Code or Codex normally. Claude prompts are logged at prompt-submit time; Codex entries are logged when the turn completes because `notify` currently fires on `agent-turn-complete`.
 
 ### How It Works
 
-1. You type a prompt in Claude Code
-2. Claude Code fires the `UserPromptSubmit` hook
-3. AgentLog reads the prompt from stdin and sanitizes it
-4. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12+). If that fails, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md`
-5. Finds or creates a `## AgentLog` section
-6. Finds or creates a `#### project` subsection matching the current working directory
-7. Inserts a session divider `[[ses_...]]` if the session changed, then appends the entry
-8. Updates the `> 🕐` latest-entry line at the top of the section
+1. Claude Code fires `UserPromptSubmit`, or Codex invokes `notify` on `agent-turn-complete`
+2. AgentLog extracts the latest user-visible input and sanitizes it
+3. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12+). If that fails, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md`
+4. Finds or creates a `## AgentLog` section
+5. Finds or creates a `#### project` subsection matching the current working directory
+6. Inserts a session divider `[[ses_...]]` if the session changed, then appends the entry
+7. Updates the `> 🕐` latest-entry line at the top of the section
 
 Total overhead: < 50ms per prompt. Fire-and-forget, never blocks Claude Code.
 
@@ -146,15 +161,18 @@ With `--plain`, entries go to `{folder}/YYYY-MM-DD.md`:
 
 ## CLI Reference
 
+Current CLI:
+
 | Command | Description |
 |---------|-------------|
-| `agentlog init [vault] [--plain]` | Configure the vault path and register the Claude Code hook. Auto-detect vaults when the path is omitted |
+| `agentlog init [vault] [--plain] [--claude\|--codex\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex notify, `--all`: both |
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
-| `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI |
+| `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI. Also checks Codex notify status if configured |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12+) |
 | `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
-| `agentlog uninstall [-y]` | Remove the hook and delete `~/.agentlog/`. Use `-y` to skip confirmation |
+| `agentlog uninstall [-y] [--codex\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex notify only, `--all`: Remove both |
 | `agentlog hook` | Invoked automatically by Claude Code (not for direct use) |
+| `agentlog codex-notify` | Invoked automatically by Codex (not for direct use) |
 
 ## Configuration
 
@@ -164,6 +182,7 @@ With `--plain`, entries go to `{folder}/YYYY-MM-DD.md`:
 |-------|---------|-------------|
 | `vault` | (required) | Path to the Obsidian vault or plain output folder |
 | `plain` | `false` | Plain mode that writes simple markdown files without Obsidian integration |
+| `codexNotifyRestore` | unset | Previous Codex `notify` command. Used to forward/restore on Codex uninstall |
 
 Environment variables:
 
@@ -193,17 +212,34 @@ commit: <short-sha>
 
 ## Uninstall
 
+Claude-only uninstall:
+
 ```bash
 agentlog uninstall
 ```
 
 This removes the hook from `~/.claude/settings.json` and deletes `~/.agentlog/`.
 
+Codex-only uninstall:
+
+```bash
+agentlog uninstall --codex
+```
+
+Or remove both integrations:
+
+```bash
+agentlog uninstall --all
+```
+
+Codex 상태 확인은 별도 명령 대신 기존 `agentlog doctor`에 포함됩니다.
+
 ## Development
 
 ```bash
 bun install
 bun test              # run the test suite
+bun run test:install-smoke
 bun run typecheck     # run tsc --noEmit
 bun run build         # compile to dist/ (optional)
 ```
@@ -216,6 +252,9 @@ bun link
 
 # Edit source and run immediately
 agentlog doctor
+
+# Isolated bun link install smoke test
+bun run test:install-smoke
 
 # Watch mode
 bun run dev:watch

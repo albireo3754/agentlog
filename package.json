@@ -29,6 +29,7 @@
     "dev:watch": "bun run --watch src/cli.ts",
     "prepublishOnly": "bun run typecheck",
     "test": "bun test",
+    "test:install-smoke": "bun run scripts/e2e-bun-link-smoke.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/postinstall.mjs"
   },

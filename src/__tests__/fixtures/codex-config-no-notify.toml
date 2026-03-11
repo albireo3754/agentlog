@@ -1,0 +1,4 @@
+model = "gpt-5.4"
+
+[projects."/Users/pray/work/js"]
+trust_level = "trusted"
