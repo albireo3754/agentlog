@@ -1,6 +1,6 @@
 {
   "name": "@albireo3754/agentlog",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Auto-log Claude Code prompts to Obsidian Daily Notes",
   "type": "module",
   "bin": {
