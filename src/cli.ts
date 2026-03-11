@@ -12,7 +12,7 @@
  *   agentlog codex-notify             — invoked by Codex notify on agent-turn-complete
  */
 
-import { existsSync, rmSync } from "fs";
+import { existsSync, readFileSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
