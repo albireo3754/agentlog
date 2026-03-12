@@ -143,6 +143,7 @@ With `--plain`, entries go to `{folder}/YYYY-MM-DD.md`:
 |---------|-------------|
 | `agentlog init [vault] [--plain]` | Vault 경로 설정 + Claude Code hook 등록. 인자 없으면 자동 감지 |
 | `agentlog detect` | 설치된 Obsidian vault 목록 + CLI 상태 표시 |
+| `agentlog codex-debug <prompt>` | 테스트용으로 `codex exec "<prompt>"` 실행 |
 | `agentlog doctor` | 설치 상태 헬스체크 (binary, vault, hook, Obsidian CLI 등) |
 | `agentlog open` | 오늘의 Daily Note를 Obsidian에서 열기 (CLI 1.12+ 필요) |
 | `agentlog uninstall [-y]` | Hook 제거 + `~/.agentlog/` 삭제. `-y`로 확인 생략 |
