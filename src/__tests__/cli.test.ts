@@ -19,7 +19,7 @@ const PROJECT_ROOT = "/Users/pray/work/js/agentlog";
 
 async function runCli(
   args: string[],
-  opts: { HOME?: string; AGENTLOG_CONFIG_DIR?: string } = {}
+  opts: { HOME?: string; AGENTLOG_CONFIG_DIR?: string; PATH?: string } = {}
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const env = { ...process.env, ...opts };
   const proc = Bun.spawn(
@@ -293,6 +293,71 @@ describe("cli doctor command", () => {
     expect(stdout).toContain("plain mode");
     // obsidian line should not appear when plain mode
     expect(stdout).not.toContain("obsidian");
+  });
+});
+
+describe("cli codex-debug command", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it("runs codex exec with the provided prompt", async () => {
+    const binDir = join(tmpHome, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const argsFile = join(tmpHome, "codex-args.txt");
+
+    writeFileSync(
+      join(binDir, "codex"),
+      `#!/bin/sh
+printf '%s\n' "$@" > "${argsFile}"
+`,
+      "utf-8"
+    );
+    Bun.spawnSync(["chmod", "+x", join(binDir, "codex")]);
+
+    const { exitCode } = await runCli(["codex-debug", "system", "prompt"], {
+      HOME: tmpHome,
+      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(argsFile, "utf-8")).toBe("exec\n--\nsystem prompt\n");
+  });
+
+  it("passes prompts starting with dashes as prompt text", async () => {
+    const binDir = join(tmpHome, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const argsFile = join(tmpHome, "codex-args.txt");
+
+    writeFileSync(
+      join(binDir, "codex"),
+      `#!/bin/sh
+printf '%s\n' "$@" > "${argsFile}"
+`,
+      "utf-8"
+    );
+    Bun.spawnSync(["chmod", "+x", join(binDir, "codex")]);
+
+    const { exitCode } = await runCli(["codex-debug", "--help"], {
+      HOME: tmpHome,
+      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(argsFile, "utf-8")).toBe("exec\n--\n--help\n");
+  });
+
+  it("exits with error when prompt is missing", async () => {
+    const { stderr, exitCode } = await runCli(["codex-debug"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("prompt is required");
   });
 });
 

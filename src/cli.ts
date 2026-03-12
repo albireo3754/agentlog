@@ -22,6 +22,7 @@ function usage(): void {
   console.log(`Usage:
   agentlog init [vault] [--plain]   Configure vault and register hook
   agentlog detect                   List detected Obsidian vaults
+  agentlog codex-debug <prompt>     Run codex exec with a test prompt
   agentlog doctor                   Check installation health
   agentlog open                     Open today's Daily Note in Obsidian (CLI)
   agentlog uninstall                Remove hook and config
@@ -385,6 +386,25 @@ async function cmdOpen(): Promise<void> {
   }
 }
 
+async function cmdCodexDebug(args: string[]): Promise<void> {
+  const prompt = args.join(" ").trim();
+  if (!prompt) {
+    console.error("Error: prompt is required");
+    process.exit(1);
+  }
+
+  const proc = spawnSync("codex", ["exec", "--", prompt], {
+    stdio: "inherit",
+  });
+
+  if (proc.error) {
+    console.error(`Failed to run codex exec: ${proc.error.message}`);
+    process.exit(1);
+  }
+
+  process.exit(proc.status ?? 1);
+}
+
 async function cmdHook(): Promise<void> {
   // Dynamically import hook to avoid loading it unless needed
   await import("./hook.js");
@@ -403,6 +423,9 @@ switch (command) {
     break;
   case "doctor":
     await cmdDoctor();
+    break;
+  case "codex-debug":
+    await cmdCodexDebug(rest);
     break;
   case "open":
     await cmdOpen();
