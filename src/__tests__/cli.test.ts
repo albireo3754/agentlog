@@ -298,6 +298,71 @@ describe("cli doctor command", () => {
   });
 });
 
+describe("cli codex-debug command", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it("runs codex exec with the provided prompt", async () => {
+    const binDir = join(tmpHome, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const argsFile = join(tmpHome, "codex-args.txt");
+
+    writeFileSync(
+      join(binDir, "codex"),
+      `#!/bin/sh
+printf '%s\n' "$@" > "${argsFile}"
+`,
+      "utf-8"
+    );
+    Bun.spawnSync(["chmod", "+x", join(binDir, "codex")]);
+
+    const { exitCode } = await runCli(["codex-debug", "system", "prompt"], {
+      HOME: tmpHome,
+      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(argsFile, "utf-8")).toBe("exec\n--\nsystem prompt\n");
+  });
+
+  it("passes prompts starting with dashes as prompt text", async () => {
+    const binDir = join(tmpHome, "bin");
+    mkdirSync(binDir, { recursive: true });
+    const argsFile = join(tmpHome, "codex-args.txt");
+
+    writeFileSync(
+      join(binDir, "codex"),
+      `#!/bin/sh
+printf '%s\n' "$@" > "${argsFile}"
+`,
+      "utf-8"
+    );
+    Bun.spawnSync(["chmod", "+x", join(binDir, "codex")]);
+
+    const { exitCode } = await runCli(["codex-debug", "--help"], {
+      HOME: tmpHome,
+      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readFileSync(argsFile, "utf-8")).toBe("exec\n--\n--help\n");
+  });
+
+  it("exits with error when prompt is missing", async () => {
+    const { stderr, exitCode } = await runCli(["codex-debug"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("prompt is required");
+  });
+});
+
 describe("cli usage", () => {
   it("prints only the headline in prod for the version command", async () => {
     const { stdout, exitCode } = await runCli(["version"], { AGENTLOG_PHASE: "prod" });
