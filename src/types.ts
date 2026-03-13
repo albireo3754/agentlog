@@ -4,6 +4,7 @@
 export interface AgentLogConfig {
   vault: string;
   plain?: boolean;
+  codexNotifyRestore?: string[] | null;
 }
 
 /** A single log entry to be written into a Daily Note */

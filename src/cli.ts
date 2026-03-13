@@ -23,6 +23,7 @@ function usage(): void {
   agentlog init [vault] [--plain]   Configure vault and register hook
   agentlog detect                   List detected Obsidian vaults
   agentlog codex-debug <prompt>     Run codex exec with a test prompt
+  agentlog codex-notify             Handle Codex notify callback (internal)
   agentlog doctor                   Check installation health
   agentlog open                     Open today's Daily Note in Obsidian (CLI)
   agentlog uninstall                Remove hook and config
@@ -393,6 +394,18 @@ async function cmdCodexDebug(args: string[]): Promise<void> {
     process.exit(1);
   }
 
+  // Ensure codex notify is registered so logging works
+  const { registerCodexNotify } = await import("./codex-settings.js");
+  const config = loadConfig();
+  const result = registerCodexNotify(config?.codexNotifyRestore ?? null);
+  if (result.changed) {
+    console.log("[agentlog] codex notify registered");
+    // Persist restore state so uninstall can undo it
+    if (config) {
+      saveConfig({ ...config, codexNotifyRestore: result.restoreNotify });
+    }
+  }
+
   const proc = spawnSync("codex", ["exec", "--", prompt], {
     stdio: "inherit",
   });
@@ -403,6 +416,12 @@ async function cmdCodexDebug(args: string[]): Promise<void> {
   }
 
   process.exit(proc.status ?? 1);
+}
+
+async function cmdCodexNotify(args: string[]): Promise<void> {
+  const { runCodexNotify } = await import("./codex-notify.js");
+  const rawArg = args.length > 0 ? args.join(" ") : undefined;
+  await runCodexNotify(rawArg);
 }
 
 async function cmdHook(): Promise<void> {
@@ -426,6 +445,9 @@ switch (command) {
     break;
   case "codex-debug":
     await cmdCodexDebug(rest);
+    break;
+  case "codex-notify":
+    await cmdCodexNotify(rest);
     break;
   case "open":
     await cmdOpen();
