@@ -36,6 +36,8 @@ function usage(): void {
   agentlog init [vault] [--plain] [--claude | --codex | --all] [--dry-run]
                                    Configure Claude hook, Codex notify, or both
   agentlog detect                   List detected Obsidian vaults
+  agentlog codex-debug <prompt>     Run codex exec with a test prompt
+  agentlog codex-notify             Handle Codex notify callback (internal)
   agentlog doctor                   Check installation health
   agentlog validate                 Validate installation (machine-readable pass/fail)
   agentlog open                     Open today's Daily Note in Obsidian (CLI)
@@ -653,14 +655,46 @@ async function cmdOpen(): Promise<void> {
   }
 }
 
-async function cmdHook(): Promise<void> {
-  // Dynamically import hook to avoid loading it unless needed
-  await import("./hook.js");
+async function cmdCodexDebug(args: string[]): Promise<void> {
+  const prompt = args.join(" ").trim();
+  if (!prompt) {
+    console.error("Error: prompt is required");
+    process.exit(1);
+  }
+
+  // Ensure codex notify is registered so logging works
+  const { registerCodexNotify } = await import("./codex-settings.js");
+  const config = loadConfig();
+  const result = registerCodexNotify(config?.codexNotifyRestore ?? null);
+  if (result.changed) {
+    console.log("[agentlog] codex notify registered");
+    // Persist restore state so uninstall can undo it
+    if (config) {
+      saveConfig({ ...config, codexNotifyRestore: result.restoreNotify });
+    }
+  }
+
+  const proc = spawnSync("codex", ["exec", "--", prompt], {
+    stdio: "inherit",
+  });
+
+  if (proc.error) {
+    console.error(`Failed to run codex exec: ${proc.error.message}`);
+    process.exit(1);
+  }
+
+  process.exit(proc.status ?? 1);
 }
 
 async function cmdCodexNotify(args: string[]): Promise<void> {
   const { runCodexNotify } = await import("./codex-notify.js");
-  await runCodexNotify(args[0]);
+  const rawArg = args.length > 0 ? args.join(" ") : undefined;
+  await runCodexNotify(rawArg);
+}
+
+async function cmdHook(): Promise<void> {
+  // Dynamically import hook to avoid loading it unless needed
+  await import("./hook.js");
 }
 
 async function cmdVersion(): Promise<void> {
@@ -724,6 +758,12 @@ switch (command) {
   case "validate":
     await cmdValidate();
     break;
+  case "codex-debug":
+    await cmdCodexDebug(rest);
+    break;
+  case "codex-notify":
+    await cmdCodexNotify(rest);
+    break;
   case "open":
     await cmdOpen();
     break;
@@ -735,9 +775,6 @@ switch (command) {
     break;
   case "hook":
     await cmdHook();
-    break;
-  case "codex-notify":
-    await cmdCodexNotify(rest);
     break;
   default:
     usage();

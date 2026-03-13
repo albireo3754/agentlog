@@ -167,6 +167,7 @@ Current CLI:
 |---------|-------------|
 | `agentlog init [vault] [--plain] [--claude\|--codex\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex notify, `--all`: both |
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
+| `agentlog codex-debug <prompt>` | Run `codex exec "<prompt>"` with notify auto-registered |
 | `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI. Also checks Codex notify status if configured |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12+) |
 | `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
