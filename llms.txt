@@ -1,0 +1,128 @@
+# AgentLog
+
+Auto-log Claude Code prompts and Codex CLI turns to Obsidian Daily Notes.
+
+AgentLog is a local CLI tool that hooks into Claude Code (UserPromptSubmit) and/or Codex CLI (agent-turn-complete notify) to append each prompt/turn to the Obsidian Daily Note for today, grouped by working directory and session.
+
+## Install
+
+```
+npm install -g @albireo3754/agentlog
+# or
+bun add -g @albireo3754/agentlog
+```
+
+Requirements: Bun >=1.0.0 or Node.js >=20, Claude Code or Codex CLI, Obsidian.
+
+## Setup
+
+```
+agentlog init ~/path/to/vault          # Claude Code hook (default)
+agentlog init --codex ~/path/to/vault  # Codex CLI notify
+agentlog init --all ~/path/to/vault    # Both
+agentlog init --plain ~/notes          # Plain folder (no Obsidian)
+```
+
+`init` writes `~/.agentlog/config.json` and registers the hook in `~/.claude/settings.json` (Claude) or `~/.codex/config.toml` (Codex). The `agentlog` binary must remain in PATH after setup.
+
+Run without arguments for interactive vault auto-detection.
+
+## Commands
+
+```
+agentlog init [vault] [--plain] [--claude|--codex|--all]
+    Configure vault and register hook(s).
+    --claude  Claude Code UserPromptSubmit hook (default)
+    --codex   Codex CLI agent-turn-complete notify
+    --all     Both integrations
+    --plain   Write to plain folder instead of Obsidian vault
+
+agentlog detect
+    List detected Obsidian vaults and Obsidian CLI status.
+    No config changes.
+
+agentlog doctor
+    Health check: binary, vault, Obsidian app, CLI, hook, Codex notify.
+    Exits 1 if any required check fails.
+    Warnings (cli, cli-ver, cli-app, daily) are non-fatal.
+
+agentlog open
+    Open today's Daily Note in Obsidian via CLI.
+    Requires Obsidian 1.12+ with CLI enabled and app running.
+
+agentlog uninstall [-y] [--codex|--all]
+    (default)  Remove Claude hook + delete ~/.agentlog/
+    --codex    Remove Codex notify from ~/.codex/config.toml only
+    --all      Remove both integrations + delete ~/.agentlog/
+    -y         Skip confirmation prompt
+
+agentlog version
+    Print version. Dev builds also show channel and commit.
+
+agentlog hook         (internal — called by Claude Code, not by users)
+agentlog codex-notify (internal — called by Codex, not by users)
+```
+
+## Configuration
+
+`~/.agentlog/config.json`:
+
+```json
+{
+  "vault": "/Users/you/Obsidian",
+  "plain": false,
+  "codexNotifyRestore": null
+}
+```
+
+Fields:
+- `vault` (required): absolute path to Obsidian vault or plain folder
+- `plain` (optional): if true, writes simple YYYY-MM-DD.md files
+- `codexNotifyRestore` (optional): saved previous Codex notify value, restored on uninstall
+
+Environment variables:
+- `AGENTLOG_CONFIG_DIR`: override config directory (default: `~/.agentlog`)
+- `AGENTLOG_PHASE`: force channel `dev` or `prod`
+- `OBSIDIAN_BIN`: override Obsidian CLI binary path
+
+## Daily Note Output
+
+Obsidian mode appends to a `## AgentLog` section, grouped by working directory:
+
+```markdown
+## AgentLog
+> 🕐 11:21 — js/agentlog › initialize git
+
+#### 10:53 · js/agentlog
+<!-- cwd=/Users/you/work/js/agentlog -->
+- - - - [[ses_a1b2c3d4]]
+- 10:53 start building agentlog
+- 11:07 open the spec document
+- - - - [[ses_e5f6a7b8]]
+- 11:21 initialize git
+```
+
+Plain mode appends to `{folder}/YYYY-MM-DD.md`:
+
+```markdown
+# 2026-03-02
+- 10:53 start building agentlog
+```
+
+Daily Note path resolution order:
+1. `obsidian daily:path` (Obsidian CLI 1.12+, app must be running)
+2. Fallback: `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
+
+## How the Hook Works
+
+Claude Code fires `UserPromptSubmit` with JSON on stdin containing `prompt`, `session_id`, and `cwd`. AgentLog sanitizes the prompt, resolves the Daily Note path, and appends the entry. Fails silently — never interrupts Claude Code. Total overhead: under 50ms per prompt.
+
+Codex fires `agent-turn-complete` notify. Entries are logged when the turn completes (not at prompt submission time).
+
+## Uninstall
+
+```
+agentlog uninstall        # Claude only
+agentlog uninstall --codex  # Codex only
+agentlog uninstall --all    # Both
+```
