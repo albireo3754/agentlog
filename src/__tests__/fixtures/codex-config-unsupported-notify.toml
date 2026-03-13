@@ -1,0 +1,5 @@
+notify = [
+  "node",
+  "/tmp/existing-notify.js",
+]
+model = "gpt-5.4"

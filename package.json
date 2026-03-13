@@ -1,6 +1,6 @@
 {
   "name": "@albireo3754/agentlog",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Auto-log Claude Code prompts to Obsidian Daily Notes",
   "type": "module",
   "bin": {
@@ -29,6 +29,7 @@
     "dev:watch": "bun run --watch src/cli.ts",
     "prepublishOnly": "bun run typecheck",
     "test": "bun test",
+    "test:install-smoke": "bun run scripts/e2e-bun-link-smoke.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/postinstall.mjs"
   },

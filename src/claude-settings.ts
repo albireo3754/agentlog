@@ -4,7 +4,7 @@
  * in ~/.claude/settings.json.
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, rmSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 
@@ -60,8 +60,22 @@ export function unregisterHook(): boolean {
 
   if (after.length === before.length) return false; // nothing removed
 
-  hooks["UserPromptSubmit"] = after;
-  writeClaudeSettings(settings);
+  if (after.length === 0) {
+    delete hooks["UserPromptSubmit"];
+  } else {
+    hooks["UserPromptSubmit"] = after;
+  }
+
+  if (Object.keys(hooks).length === 0) {
+    delete settings["hooks"];
+  }
+
+  if (Object.keys(settings).length === 0) {
+    rmSync(CLAUDE_SETTINGS_PATH, { force: true });
+  } else {
+    writeClaudeSettings(settings);
+  }
+
   return true;
 }
 

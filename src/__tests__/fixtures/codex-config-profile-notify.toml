@@ -1,0 +1,4 @@
+model = "gpt-5.4"
+
+[profiles.default]
+notify = ["node", "/tmp/existing-profile-notify.js"]

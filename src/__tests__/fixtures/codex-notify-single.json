@@ -1,0 +1,10 @@
+{
+  "type": "agent-turn-complete",
+  "thread-id": "019cb123-ac48-7d22-b5bf-195ee34699af",
+  "turn-id": "019cb123-ac4f-7800-a1f9-a953dc2ce3f5",
+  "cwd": "/Users/pray/Obsidian",
+  "input-messages": [
+    "Reply with exactly: OK"
+  ],
+  "last-assistant-message": "OK"
+}
