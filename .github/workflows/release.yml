@@ -7,11 +7,16 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Skip release commits to avoid infinite loop
+    if: "!startsWith(github.event.head_commit.message, 'chore(release):')"
     permissions:
       contents: write
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -29,21 +34,55 @@ jobs:
       - name: Build
         run: bun run build
 
-      - name: Get version from package.json
-        id: version
-        run: echo "version=$(jq -r .version package.json)" >> "$GITHUB_OUTPUT"
-
-      - name: Check if tag exists
-        id: tag_check
+      - name: Determine version bump type
+        id: bump
         run: |
-          if git ls-remote --tags origin "v${{ steps.version.outputs.version }}" | grep -q .; then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            COMMITS=$(git log --oneline --format="%s")
           else
-            echo "exists=false" >> "$GITHUB_OUTPUT"
+            COMMITS=$(git log --oneline --format="%s" "${LAST_TAG}..HEAD")
           fi
 
+          # Determine bump type from conventional commits
+          if echo "$COMMITS" | grep -qiE "^(feat|feature)(\(.+\))?!:|^BREAKING CHANGE"; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$COMMITS" | grep -qiE "^(feat|feature)(\(.+\))?:"; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump version
+        id: version
+        run: |
+          CURRENT=$(jq -r .version package.json)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+
+          case "${{ steps.bump.outputs.type }}" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Bumping $CURRENT -> $NEW_VERSION (${{ steps.bump.outputs.type }})"
+
+          # Update package.json
+          jq --arg v "$NEW_VERSION" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore(release): v${{ steps.version.outputs.version }}"
+          git push origin main
+
       - name: Create GitHub Release
-        if: steps.tag_check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
@@ -52,13 +91,11 @@ jobs:
           target_commitish: main
 
       - uses: actions/setup-node@v4
-        if: steps.tag_check.outputs.exists == 'false'
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm
-        if: steps.tag_check.outputs.exists == 'false'
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
