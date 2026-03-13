@@ -67,13 +67,15 @@ function ask(prompt: string): Promise<string> {
 function validateVault(vaultArg: string, plain: boolean): { vault: string; error?: string } {
   const vault = resolve(expandHome(vaultArg));
 
+  if (!existsSync(vault)) {
+    return { vault, error: formatError(Errors.VAULT_NOT_FOUND(vault)) };
+  }
+
   if (!plain) {
     const obsidianDir = join(vault, ".obsidian");
     if (!existsSync(obsidianDir)) {
       return { vault, error: formatError(Errors.VAULT_NOT_OBSIDIAN(vault)) };
     }
-  } else if (!existsSync(vault)) {
-    return { vault, error: formatError(Errors.VAULT_NOT_FOUND(vault)) };
   }
 
   return { vault };
@@ -321,32 +323,39 @@ async function interactiveInit(
   await runner(selected.path, false);
 }
 
-async function cmdInitDryRun(vaultArg: string, plain: boolean): Promise<void> {
-  if (!vaultArg) {
+async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): Promise<void> {
+  if (!vaultArg && target !== "codex") {
     console.error("Error: --dry-run requires a vault path argument");
     process.exit(1);
   }
 
-  const { vault, error } = validateVault(vaultArg, plain);
-  if (error) {
-    console.error(error);
-    process.exit(1);
+  if (vaultArg) {
+    const { vault, error } = validateVault(vaultArg, plain);
+    if (error) {
+      console.error(error);
+      process.exit(1);
+    }
   }
 
   const cfgPath = configPath();
   const claudeSettingsPath = CLAUDE_SETTINGS_PATH;
 
   console.log("[dry-run] Validation passed. No changes were made.");
-  console.log(`  Would save config to: ${cfgPath}`);
-  console.log(`    vault: ${vault}${plain ? " (plain mode)" : ""}`);
-  console.log(`  Would register hook in: ${claudeSettingsPath}`);
+  if (target === "hook" || target === "all") {
+    console.log(`  Would save config to: ${cfgPath}`);
+    if (vaultArg) console.log(`    vault: ${resolve(expandHome(vaultArg))}${plain ? " (plain mode)" : ""}`);
+    console.log(`  Would register hook in: ${claudeSettingsPath}`);
+  }
+  if (target === "codex" || target === "all") {
+    console.log(`  Would register codex notify integration`);
+  }
 }
 
 async function cmdInit(args: string[]): Promise<void> {
   const { plain, target, vaultArg, dryRun } = parseInitArgs(args);
 
   if (dryRun) {
-    await cmdInitDryRun(vaultArg, plain);
+    await cmdInitDryRun(vaultArg, plain, target);
     return;
   }
 
@@ -713,7 +722,8 @@ async function cmdValidate(): Promise<void> {
 
   // 1. Config present
   const config = loadConfig();
-  check("config", !!config, config ? configPath() : "no config.json");
+  const cfgExists = existsSync(configPath());
+  check("config", !!config, config ? configPath() : cfgExists ? "invalid config.json (parse error)" : "no config.json");
 
   // 2. Vault exists
   if (config) {

@@ -58,6 +58,6 @@ export function formatError(err: AgentLogError): string {
   return `Error: ${err.message}\n  Fix: ${err.fix}`;
 }
 
-export function toJsonError(err: AgentLogError): object {
+export function toJsonError(err: AgentLogError): AgentLogError & { status: "error" } {
   return { status: "error", ...err };
 }
