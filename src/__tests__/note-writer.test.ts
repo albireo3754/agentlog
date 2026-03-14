@@ -22,6 +22,7 @@ function makeEntry(overrides: Partial<LogEntry> = {}): LogEntry {
     sessionId: "abc12345-def6-7890-abcd-ef1234567890",
     project: "js/agentlog",
     cwd: "/Users/pray/work/js/agentlog",
+    source: "claude",
     ...overrides,
   };
 }
@@ -125,7 +126,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
     expect(content).toContain("#### 10:53 · js/agentlog");
     expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog -->");
-    expect(content).toContain("- - - - [[ses_abc12345]]");
+    expect(content).toContain("- - - - [[claude_abc12345]]");
     expect(content).toContain("- 10:53 테스트 작업");
   });
 
@@ -194,10 +195,26 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     appendEntry(config, entry2, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("- - - - [[ses_session1]]");
-    expect(content).toContain("- - - - [[ses_session2]]");
+    expect(content).toContain("- - - - [[claude_session1]]");
+    expect(content).toContain("- - - - [[claude_session2]]");
     expect(content).toContain("- 10:53 테스트 작업");
     expect(content).toContain("- 15:00 테스트 작업");
+  });
+
+  // N5b: codex source emits [[codex_...]] dividers
+  it("emits codex-prefixed divider when source is codex", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    const entry1 = makeEntry({ time: "10:53", source: "codex", sessionId: "codex111-aaaa-bbbb-cccc-dddddddddddd" });
+    const entry2 = makeEntry({ time: "15:00", source: "codex", sessionId: "codex222-xxxx-yyyy-zzzz-111111111111" });
+    appendEntry(config, entry1, TEST_DATE);
+    appendEntry(config, entry2, TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("- - - - [[codex_codex111]]");
+    expect(content).toContain("- - - - [[codex_codex222]]");
+    expect(content).not.toContain("claude_");
   });
 
   // N6: different projects → separate #### sections

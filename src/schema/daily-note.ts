@@ -5,6 +5,8 @@
  * appends log entries into.
  */
 
+import type { SourceType } from "../types.js";
+
 /** Korean day names indexed by JS getDay() (0=Sunday) */
 export const KO_DAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
@@ -45,10 +47,10 @@ export function buildAgentLogEntry(time: string, prompt: string): string {
 /**
  * Session divider line inserted when session_id changes within a project section.
  * Uses Obsidian wiki-link format so the session ID becomes a navigable link.
- * Format: "- - - - [[ses_XXXXXXXX]]"
+ * Format: "- - - - [[claude_XXXXXXXX]]" or "- - - - [[codex_XXXXXXXX]]"
  */
-export function buildSessionDivider(sessionId: string): string {
-  return `- - - - [[ses_${sessionId.slice(0, 8)}]]`;
+export function buildSessionDivider(sessionId: string, source: SourceType = "claude"): string {
+  return `- - - - [[${source}_${sessionId.slice(0, 8)}]]`;
 }
 
 /**

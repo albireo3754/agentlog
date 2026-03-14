@@ -41,10 +41,12 @@ function fixture(name: string): string {
 
 function makeFakeCodexPath(home: string): string {
   const binDir = join(home, "bin");
-  const codexBin = join(binDir, "codex");
   mkdirSync(binDir, { recursive: true });
-  writeFileSync(codexBin, "#!/bin/sh\nexit 0\n", "utf-8");
-  chmodSync(codexBin, 0o755);
+  for (const name of ["codex", "agentlog"]) {
+    const bin = join(binDir, name);
+    writeFileSync(bin, "#!/bin/sh\nexit 0\n", "utf-8");
+    chmodSync(bin, 0o755);
+  }
   return `${binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`;
 }
 
