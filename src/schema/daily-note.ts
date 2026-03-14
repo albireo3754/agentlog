@@ -5,11 +5,10 @@
  * appends log entries into.
  */
 
+import type { SourceType } from "../types.js";
+
 /** Korean day names indexed by JS getDay() (0=Sunday) */
 export const KO_DAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
-
-/** Shared source type for agent sessions (kept in sync with LogEntry["source"]). */
-export type Source = "claude" | "codex";
 
 /**
  * Returns the Daily Note file name for a given date.
@@ -50,7 +49,7 @@ export function buildAgentLogEntry(time: string, prompt: string): string {
  * Uses Obsidian wiki-link format so the session ID becomes a navigable link.
  * Format: "- - - - [[claude_XXXXXXXX]]" or "- - - - [[codex_XXXXXXXX]]"
  */
-export function buildSessionDivider(sessionId: string, source: Source = "claude"): string {
+export function buildSessionDivider(sessionId: string, source: SourceType = "claude"): string {
   return `- - - - [[${source}_${sessionId.slice(0, 8)}]]`;
 }
 

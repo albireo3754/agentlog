@@ -119,9 +119,8 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
   const metaRe = /^<!-- cwd=(.+?) -->$/;
   const legacyMetaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
   const legacyHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=([\w-]+) -->$/;
-  // Match current [[claude_...]] / [[codex_...]] dividers and legacy [[ses_...]] / (ses_...) dividers
-  const dividerRe =
-    /^- - - - (?:(?:\[\[(?:claude|codex|ses)_|\(ses_)([\w-]+)(?:\]\]|\)))$/;
+  // Match current [[claude_...]]/[[codex_...]] and legacy [[ses_...]]/(ses_...) dividers
+  const dividerRe = /^- - - - (?:\[\[(?:claude|codex|ses)_([\w-]+)\]\]|\(ses_([\w-]+)\))$/;
 
   let projectIdx = -1;
   let projectMetaIdx = -1; // -1 means legacy inline format (no separate metadata line)
@@ -204,7 +203,7 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
     let currentSes = "";
     for (let i = firstContentIdx; i < subsectionEnd; i++) {
       const m = lines[i].match(dividerRe);
-      if (m) currentSes = m[1];
+      if (m) currentSes = m[1] ?? m[2];
     }
     if (!currentSes) currentSes = legacySes;
 
