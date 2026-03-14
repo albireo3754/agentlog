@@ -56,6 +56,7 @@ export async function runCodexNotify(rawArg?: string): Promise<void> {
         sessionId: parsed.sessionId,
         project: cwdToProject(parsed.cwd),
         cwd: parsed.cwd,
+        source: "codex",
       },
       now
     );
