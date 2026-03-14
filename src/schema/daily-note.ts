@@ -8,6 +8,9 @@
 /** Korean day names indexed by JS getDay() (0=Sunday) */
 export const KO_DAYS = ["일", "월", "화", "수", "목", "금", "토"] as const;
 
+/** Shared source type for agent sessions (kept in sync with LogEntry["source"]). */
+export type Source = "claude" | "codex";
+
 /**
  * Returns the Daily Note file name for a given date.
  * Format: YYYY-MM-DD-요일.md  (e.g. 2026-03-01-일.md)
@@ -47,7 +50,7 @@ export function buildAgentLogEntry(time: string, prompt: string): string {
  * Uses Obsidian wiki-link format so the session ID becomes a navigable link.
  * Format: "- - - - [[claude_XXXXXXXX]]" or "- - - - [[codex_XXXXXXXX]]"
  */
-export function buildSessionDivider(sessionId: string, source: "claude" | "codex" = "claude"): string {
+export function buildSessionDivider(sessionId: string, source: Source = "claude"): string {
   return `- - - - [[${source}_${sessionId.slice(0, 8)}]]`;
 }
 
