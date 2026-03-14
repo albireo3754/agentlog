@@ -21,6 +21,7 @@ import type { AgentLogConfig } from "./types.js";
 import { detectVaults, detectCli } from "./detect.js";
 import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
 import { registerHook, unregisterHook, isHookRegistered, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
+import { Errors, formatError } from "./errors.js";
 import {
   CODEX_CONFIG_PATH,
   readCodexNotifyState,
@@ -32,14 +33,15 @@ import * as readline from "readline";
 
 function usage(): void {
   console.log(`Usage:
-  agentlog init [vault] [--plain] [--claude | --codex | --all]
+  agentlog init [vault] [--plain] [--claude | --codex | --all] [--dry-run]
                                    Configure Claude hook, Codex notify, or both
   agentlog detect                   List detected Obsidian vaults
   agentlog codex-debug <prompt>     Run codex exec with a test prompt
   agentlog codex-notify             Handle Codex notify callback (internal)
   agentlog doctor                   Check installation health
+  agentlog validate                 Validate installation (machine-readable pass/fail)
   agentlog open                     Open today's Daily Note in Obsidian (CLI)
-  agentlog uninstall [-y] [--codex | --all]
+  agentlog uninstall [-y] [--codex | --all] [--dry-run]
                                    Remove Claude hook, Codex notify, or both
   agentlog version                  Print version and build identity
   agentlog hook                     Run hook (called by Claude Code)
@@ -48,6 +50,7 @@ function usage(): void {
 Options:
   --plain       Write to plain folder without Obsidian timeblock parsing
   -y            Skip confirmation prompt (for uninstall)
+  --dry-run     Show what would happen without making changes
 `);
 }
 
@@ -61,29 +64,29 @@ function ask(prompt: string): Promise<string> {
   });
 }
 
-function validateVaultOrExit(vaultArg: string, plain: boolean): string {
+function validateVault(vaultArg: string, plain: boolean): { vault: string; error?: string } {
   const vault = resolve(expandHome(vaultArg));
+
+  if (!existsSync(vault)) {
+    return { vault, error: formatError(Errors.VAULT_NOT_FOUND(vault)) };
+  }
 
   if (!plain) {
     const obsidianDir = join(vault, ".obsidian");
     if (!existsSync(obsidianDir)) {
-      console.error(`
-Warning: Obsidian vault not detected at: ${vault}
-
-1. Install Obsidian: https://obsidian.md/download
-2. Open the folder as a vault, then run:
-   agentlog init /path/to/your/vault
-
-Or to write to a plain folder:
-   agentlog init --plain ~/notes
-`);
-      process.exit(1);
+      return { vault, error: formatError(Errors.VAULT_NOT_OBSIDIAN(vault)) };
     }
-  } else if (!existsSync(vault)) {
-    console.error(`Error: directory not found: ${vault}`);
-    process.exit(1);
   }
 
+  return { vault };
+}
+
+function validateVaultOrExit(vaultArg: string, plain: boolean): string {
+  const { vault, error } = validateVault(vaultArg, plain);
+  if (error) {
+    console.error(error);
+    process.exit(1);
+  }
   return vault;
 }
 
@@ -148,11 +151,12 @@ function detectBinary(bin: "agentlog" | "codex"): string {
 type InitTarget = "claude" | "codex" | "all";
 type UninstallTarget = "claude" | "codex" | "all";
 
-function parseInitArgs(args: string[]): { plain: boolean; target: InitTarget; vaultArg: string } {
+function parseInitArgs(args: string[]): { plain: boolean; target: InitTarget; vaultArg: string; dryRun: boolean } {
   const plain = args.includes("--plain");
   const hasClaude = args.includes("--claude");
   const hasCodex = args.includes("--codex");
   const hasAll = args.includes("--all");
+  const dryRun = args.includes("--dry-run");
 
   if ((hasAll && (hasClaude || hasCodex)) || (hasClaude && hasCodex)) {
     console.error("Error: choose exactly one target: --claude, --codex, or --all");
@@ -161,23 +165,24 @@ function parseInitArgs(args: string[]): { plain: boolean; target: InitTarget; va
 
   const target: InitTarget = hasAll ? "all" : hasCodex ? "codex" : "claude";
   const filteredArgs = args.filter(
-    (arg) => !["--plain", "--claude", "--codex", "--all"].includes(arg)
+    (arg) => !["--plain", "--claude", "--codex", "--all", "--dry-run"].includes(arg)
   );
 
-  return { plain, target, vaultArg: filteredArgs[0] ?? "" };
+  return { plain, target, vaultArg: filteredArgs[0] ?? "", dryRun };
 }
 
-function parseUninstallArgs(args: string[]): { skipConfirm: boolean; target: UninstallTarget } {
+function parseUninstallArgs(args: string[]): { skipConfirm: boolean; target: UninstallTarget; dryRun: boolean } {
   const skipConfirm = args.includes("-y");
   const hasCodex = args.includes("--codex");
   const hasAll = args.includes("--all");
+  const dryRun = args.includes("--dry-run");
 
   if (hasCodex && hasAll) {
     console.error("Error: choose at most one uninstall target: --codex or --all");
     process.exit(1);
   }
 
-  return { skipConfirm, target: hasAll ? "all" : hasCodex ? "codex" : "claude" };
+  return { skipConfirm, target: hasAll ? "all" : hasCodex ? "codex" : "claude", dryRun };
 }
 
 async function runInit(vaultArg: string, plain: boolean): Promise<void> {
@@ -318,8 +323,42 @@ async function interactiveInit(
   await runner(selected.path, false);
 }
 
+async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): Promise<void> {
+  if (!vaultArg && target !== "codex") {
+    console.error("Error: --dry-run requires a vault path argument");
+    process.exit(1);
+  }
+
+  if (vaultArg) {
+    const { vault, error } = validateVault(vaultArg, plain);
+    if (error) {
+      console.error(error);
+      process.exit(1);
+    }
+  }
+
+  const cfgPath = configPath();
+  const claudeSettingsPath = CLAUDE_SETTINGS_PATH;
+
+  console.log("[dry-run] Validation passed. No changes were made.");
+  if (target === "hook" || target === "all") {
+    console.log(`  Would save config to: ${cfgPath}`);
+    if (vaultArg) console.log(`    vault: ${resolve(expandHome(vaultArg))}${plain ? " (plain mode)" : ""}`);
+    console.log(`  Would register hook in: ${claudeSettingsPath}`);
+  }
+  if (target === "codex" || target === "all") {
+    console.log(`  Would register codex notify integration`);
+  }
+}
+
 async function cmdInit(args: string[]): Promise<void> {
-  const { plain, target, vaultArg } = parseInitArgs(args);
+  const { plain, target, vaultArg, dryRun } = parseInitArgs(args);
+
+  if (dryRun) {
+    await cmdInitDryRun(vaultArg, plain, target);
+    return;
+  }
+
   const runner = target === "all" ? runAllInit : target === "codex" ? runCodexInit : runInit;
 
   if (!vaultArg) {
@@ -395,8 +434,21 @@ function uninstallCodex(clearRestoreMetadata: boolean): void {
 }
 
 async function cmdUninstall(args: string[]): Promise<void> {
-  const { skipConfirm, target } = parseUninstallArgs(args);
+  const { skipConfirm, target, dryRun } = parseUninstallArgs(args);
   const cfgDir = configDir();
+
+  if (dryRun) {
+    const claudeSettingsPath = CLAUDE_SETTINGS_PATH;
+    if (target === "codex" || target === "all") {
+      console.log(`[dry-run] Would restore/remove Codex notify: ${CODEX_CONFIG_PATH}`);
+    }
+    if (target === "claude" || target === "all") {
+      console.log(`[dry-run] Would remove hook from: ${claudeSettingsPath}`);
+      console.log(`[dry-run] Would delete config at: ${cfgDir}`);
+    }
+    console.log("[dry-run] No changes were made.");
+    return;
+  }
   if (!skipConfirm && process.stdin.isTTY) {
     const prompt = target === "all"
       ? "Remove AgentLog Claude hook, Codex notify, and config? [y/N]: "
@@ -658,6 +710,47 @@ async function cmdVersion(): Promise<void> {
   console.log(formatVersionOutput(getRuntimeInfo()));
 }
 
+/** agentlog validate — structured pass/fail checks, exit 0 if all required pass */
+async function cmdValidate(): Promise<void> {
+  let allOk = true;
+  const results: Array<{ check: string; status: "ok" | "fail"; detail: string }> = [];
+
+  function check(name: string, ok: boolean, detail: string): void {
+    results.push({ check: name, status: ok ? "ok" : "fail", detail });
+    if (!ok) allOk = false;
+  }
+
+  // 1. Config present
+  const config = loadConfig();
+  const cfgExists = existsSync(configPath());
+  check("config", !!config, config ? configPath() : cfgExists ? "invalid config.json (parse error)" : "no config.json");
+
+  // 2. Vault exists
+  if (config) {
+    if (config.plain) {
+      const vaultOk = existsSync(config.vault);
+      check("vault", vaultOk, vaultOk ? config.vault : `not found: ${config.vault}`);
+    } else {
+      const vaultOk = existsSync(join(config.vault, ".obsidian"));
+      check("vault", vaultOk, vaultOk ? config.vault : `.obsidian not found: ${config.vault}`);
+    }
+  } else {
+    check("vault", false, "skipped (no config)");
+  }
+
+  // 3. Hook registered
+  const hookOk = isHookRegistered();
+  check("hook", hookOk, hookOk ? CLAUDE_SETTINGS_PATH : "not registered");
+
+  for (const r of results) {
+    console.log(`${r.check}: ${r.status} (${r.detail})`);
+  }
+
+  if (!allOk) {
+    process.exit(1);
+  }
+}
+
 // --- Main dispatch ---
 
 const [, , command, ...rest] = process.argv;
@@ -671,6 +764,9 @@ switch (command) {
     break;
   case "doctor":
     await cmdDoctor();
+    break;
+  case "validate":
+    await cmdValidate();
     break;
   case "codex-debug":
     await cmdCodexDebug(rest);

@@ -363,6 +363,184 @@ printf '%s\n' "$@" > "${argsFile}"
   });
 });
 
+describe("cli init --dry-run", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  // DR1: valid vault → exits 0, prints [dry-run] and Would save config, no side effects
+  it("exits 0 and prints dry-run output without writing config or settings", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+
+    const { stdout, exitCode } = await runCli(["init", "--dry-run", vault], { HOME: tmpHome });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("[dry-run]");
+    expect(stdout).toContain("No changes were made");
+
+    // No side effects
+    const configFile = join(tmpHome, ".agentlog", "config.json");
+    const settingsFile = join(tmpHome, ".claude", "settings.json");
+    expect(existsSync(configFile)).toBe(false);
+    expect(existsSync(settingsFile)).toBe(false);
+  });
+
+  // DR2: nonexistent vault → exits 1, stderr contains error
+  it("exits 1 with error when vault path does not exist", async () => {
+    const { stderr, exitCode } = await runCli(
+      ["init", "--dry-run", join(tmpHome, "nonexistent")],
+      { HOME: tmpHome }
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toBeTruthy();
+  });
+
+  // DR3: no vault arg → exits 1, stderr contains "requires a vault path"
+  it("exits 1 with 'requires a vault path' when no vault arg", async () => {
+    const { stderr, exitCode } = await runCli(["init", "--dry-run"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("requires a vault path");
+  });
+
+  // DR4: --plain --dry-run <dir> → exits 0, stdout contains "plain mode"
+  it("exits 0 and mentions plain mode with --plain flag", async () => {
+    const notes = join(tmpHome, "notes");
+    mkdirSync(notes, { recursive: true });
+
+    const { stdout, exitCode } = await runCli(
+      ["init", "--plain", "--dry-run", notes],
+      { HOME: tmpHome }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("[dry-run]");
+    expect(stdout).toContain("No changes were made");
+  });
+});
+
+describe("cli uninstall --dry-run", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  // UD1: config + hook present → exits 0, prints "Would remove", no side effects
+  it("exits 0 and prints Would remove without modifying config or settings", async () => {
+    // Set up config
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault }),
+      "utf-8"
+    );
+    // Set up hook in settings.json
+    mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+    const settingsContent = JSON.stringify({
+      hooks: {
+        UserPromptSubmit: [
+          { matcher: "", hooks: [{ type: "command", command: "agentlog hook" }] },
+        ],
+      },
+    });
+    writeFileSync(join(tmpHome, ".claude", "settings.json"), settingsContent, "utf-8");
+
+    const { stdout, exitCode } = await runCli(["uninstall", "--dry-run"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Would remove");
+
+    // No side effects — config and settings still exist with original content
+    expect(existsSync(join(tmpHome, ".agentlog", "config.json"))).toBe(true);
+    expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
+    const settings = JSON.parse(readFileSync(join(tmpHome, ".claude", "settings.json"), "utf-8"));
+    expect(settings.hooks).toBeDefined();
+  });
+});
+
+describe("cli validate", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  // V1: all configured → exits 0, stdout contains "config: ok" and "hook: ok"
+  it("exits 0 with config: ok and hook: ok when fully configured", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault }),
+      "utf-8"
+    );
+    mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            { matcher: "", hooks: [{ type: "command", command: "agentlog hook" }] },
+          ],
+        },
+      }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["validate"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("config: ok");
+    expect(stdout).toContain("hook: ok");
+  });
+
+  // V2: no config → exits 1, stdout contains "config: fail"
+  it("exits 1 with config: fail when no config present", async () => {
+    const { stdout, exitCode } = await runCli(["validate"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("config: fail");
+  });
+
+  // V3: config present but hook not registered → exits 1, stdout contains "hook: fail"
+  it("exits 1 with hook: fail when config present but hook not registered", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault }),
+      "utf-8"
+    );
+    // No settings.json → hook not registered
+
+    const { stdout, exitCode } = await runCli(["validate"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("hook: fail");
+  });
+});
+
 describe("cli usage", () => {
   it("prints only the headline in prod for the version command", async () => {
     const { stdout, exitCode } = await runCli(["version"], { AGENTLOG_PHASE: "prod" });
