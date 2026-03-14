@@ -65,7 +65,7 @@ describe("formatError", () => {
 describe("toJsonError", () => {
   it("returns object with status error and all error fields", () => {
     const err = Errors.HOOK_NOT_REGISTERED();
-    const json = toJsonError(err) as Record<string, unknown>;
+    const json = toJsonError(err) as unknown as Record<string, unknown>;
     expect(json.status).toBe("error");
     expect(json.code).toBe("HOOK_NOT_REGISTERED");
     expect(json.message).toBe(err.message);
