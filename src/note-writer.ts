@@ -119,8 +119,8 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
   const metaRe = /^<!-- cwd=(.+?) -->$/;
   const legacyMetaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
   const legacyHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=([\w-]+) -->$/;
-  // Match both new [[ses_...]] and legacy (ses_...) formats for backward compat
-  const dividerRe = /^- - - - (?:\[\[ses_([\w-]+)\]\]|\(ses_([\w-]+)\))$/;
+  // Match [[claude_...]] and [[codex_...]] source-prefixed dividers
+  const dividerRe = /^- - - - \[\[(?:claude|codex)_([\w-]+)\]\]$/;
 
   let projectIdx = -1;
   let projectMetaIdx = -1; // -1 means legacy inline format (no separate metadata line)
@@ -180,7 +180,7 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
     if (prevLine !== "" && prevLine !== "## AgentLog") {
       newSection.push("");
     }
-    newSection.push(header, meta, buildSessionDivider(entry.sessionId), entryLine);
+    newSection.push(header, meta, buildSessionDivider(entry.sessionId, entry.source), entryLine);
     lines.splice(agentLogEnd, 0, ...newSection);
   } else {
     // Existing project: find end of this subsection
@@ -203,13 +203,13 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
     let currentSes = "";
     for (let i = firstContentIdx; i < subsectionEnd; i++) {
       const m = lines[i].match(dividerRe);
-      if (m) currentSes = m[1] ?? m[2]; // group 1: new [[ses_...]], group 2: legacy (ses_...)
+      if (m) currentSes = m[1];
     }
     if (!currentSes) currentSes = legacySes;
 
     if (currentSes !== sessionShort) {
       // Session changed: insert divider + entry.
-      lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId), entryLine);
+      lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId, entry.source), entryLine);
       // Migrate legacy metadata format to new format (remove ses=).
       if (projectMetaIdx !== -1 && lines[projectMetaIdx].match(legacyMetaRe)) {
         lines[projectMetaIdx] = buildProjectMetadata(entry.cwd);

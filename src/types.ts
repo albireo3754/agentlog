@@ -14,6 +14,7 @@ export interface LogEntry {
   sessionId: string; // from hook session_id
   project: string;  // derived from cwd: parent/basename
   cwd: string;      // full cwd path, used as section matching key
+  source: "claude" | "codex";
 }
 
 /** Result of writing a log entry */

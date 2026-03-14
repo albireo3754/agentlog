@@ -22,6 +22,7 @@ function makeEntry(overrides: Partial<LogEntry> = {}): LogEntry {
     sessionId: "abc12345-def6-7890-abcd-ef1234567890",
     project: "js/agentlog",
     cwd: "/Users/pray/work/js/agentlog",
+    source: "claude",
     ...overrides,
   };
 }
@@ -125,7 +126,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
     expect(content).toContain("#### 10:53 · js/agentlog");
     expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog -->");
-    expect(content).toContain("- - - - [[ses_abc12345]]");
+    expect(content).toContain("- - - - [[claude_abc12345]]");
     expect(content).toContain("- 10:53 테스트 작업");
   });
 
@@ -194,8 +195,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     appendEntry(config, entry2, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("- - - - [[ses_session1]]");
-    expect(content).toContain("- - - - [[ses_session2]]");
+    expect(content).toContain("- - - - [[claude_session1]]");
+    expect(content).toContain("- - - - [[claude_session2]]");
     expect(content).toContain("- 10:53 테스트 작업");
     expect(content).toContain("- 15:00 테스트 작업");
   });
