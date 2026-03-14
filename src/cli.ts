@@ -30,29 +30,7 @@ import {
 } from "./codex-settings.js";
 import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo, readVersion, resolvePackageRoot } from "./version-info.js";
 import * as readline from "readline";
-
-function usage(): void {
-  console.log(`Usage:
-  agentlog init [vault] [--plain] [--claude | --codex | --all] [--dry-run]
-                                   Configure Claude hook, Codex notify, or both
-  agentlog detect                   List detected Obsidian vaults
-  agentlog codex-debug <prompt>     Run codex exec with a test prompt
-  agentlog codex-notify             Handle Codex notify callback (internal)
-  agentlog doctor                   Check installation health
-  agentlog validate                 Validate installation (machine-readable pass/fail)
-  agentlog open                     Open today's Daily Note in Obsidian (CLI)
-  agentlog uninstall [-y] [--codex | --all] [--dry-run]
-                                   Remove Claude hook, Codex notify, or both
-  agentlog version                  Print version and build identity
-  agentlog hook                     Run hook (called by Claude Code)
-  agentlog codex-notify             Run notify handler (called by Codex)
-
-Options:
-  --plain       Write to plain folder without Obsidian timeblock parsing
-  -y            Skip confirmation prompt (for uninstall)
-  --dry-run     Show what would happen without making changes
-`);
-}
+import { Command } from "commander";
 
 function ask(prompt: string): Promise<string> {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
@@ -130,16 +108,6 @@ function printObsidianCliStatus(plain: boolean): void {
   }
 }
 
-function printVersion(): void {
-  try {
-    const pkgPath = join(import.meta.dir ?? new URL(".", import.meta.url).pathname, "..", "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as { version?: string };
-    if (pkg.version) console.log(`agentlog v${pkg.version}\n`);
-  } catch {
-    // version display is best-effort
-  }
-}
-
 function detectBinary(bin: "agentlog" | "codex"): string {
   const result = spawnSync("/bin/sh", ["-lc", `command -v ${bin}`], {
     encoding: "utf-8",
@@ -150,40 +118,6 @@ function detectBinary(bin: "agentlog" | "codex"): string {
 
 type InitTarget = "claude" | "codex" | "all";
 type UninstallTarget = "claude" | "codex" | "all";
-
-function parseInitArgs(args: string[]): { plain: boolean; target: InitTarget; vaultArg: string; dryRun: boolean } {
-  const plain = args.includes("--plain");
-  const hasClaude = args.includes("--claude");
-  const hasCodex = args.includes("--codex");
-  const hasAll = args.includes("--all");
-  const dryRun = args.includes("--dry-run");
-
-  if ((hasAll && (hasClaude || hasCodex)) || (hasClaude && hasCodex)) {
-    console.error("Error: choose exactly one target: --claude, --codex, or --all");
-    process.exit(1);
-  }
-
-  const target: InitTarget = hasAll ? "all" : hasCodex ? "codex" : "claude";
-  const filteredArgs = args.filter(
-    (arg) => !["--plain", "--claude", "--codex", "--all", "--dry-run"].includes(arg)
-  );
-
-  return { plain, target, vaultArg: filteredArgs[0] ?? "", dryRun };
-}
-
-function parseUninstallArgs(args: string[]): { skipConfirm: boolean; target: UninstallTarget; dryRun: boolean } {
-  const skipConfirm = args.includes("-y");
-  const hasCodex = args.includes("--codex");
-  const hasAll = args.includes("--all");
-  const dryRun = args.includes("--dry-run");
-
-  if (hasCodex && hasAll) {
-    console.error("Error: choose at most one uninstall target: --codex or --all");
-    process.exit(1);
-  }
-
-  return { skipConfirm, target: hasAll ? "all" : hasCodex ? "codex" : "claude", dryRun };
-}
 
 async function runInit(vaultArg: string, plain: boolean): Promise<void> {
   const vault = validateVaultOrExit(vaultArg, plain);
@@ -323,78 +257,6 @@ async function interactiveInit(
   await runner(selected.path, false);
 }
 
-async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): Promise<void> {
-  if (!vaultArg && target !== "codex") {
-    console.error("Error: --dry-run requires a vault path argument");
-    process.exit(1);
-  }
-
-  if (vaultArg) {
-    const { vault, error } = validateVault(vaultArg, plain);
-    if (error) {
-      console.error(error);
-      process.exit(1);
-    }
-  }
-
-  const cfgPath = configPath();
-  const claudeSettingsPath = CLAUDE_SETTINGS_PATH;
-
-  console.log("[dry-run] Validation passed. No changes were made.");
-  if (target === "hook" || target === "all") {
-    console.log(`  Would save config to: ${cfgPath}`);
-    if (vaultArg) console.log(`    vault: ${resolve(expandHome(vaultArg))}${plain ? " (plain mode)" : ""}`);
-    console.log(`  Would register hook in: ${claudeSettingsPath}`);
-  }
-  if (target === "codex" || target === "all") {
-    console.log(`  Would register codex notify integration`);
-  }
-}
-
-async function cmdInit(args: string[]): Promise<void> {
-  const { plain, target, vaultArg, dryRun } = parseInitArgs(args);
-
-  if (dryRun) {
-    await cmdInitDryRun(vaultArg, plain, target);
-    return;
-  }
-
-  const runner = target === "all" ? runAllInit : target === "codex" ? runCodexInit : runInit;
-
-  if (!vaultArg) {
-    await interactiveInit(plain, runner);
-    return;
-  }
-
-  await runner(vaultArg, plain);
-}
-
-/** agentlog detect — list detected Obsidian vaults */
-async function cmdDetect(): Promise<void> {
-  const vaults = detectVaults();
-  if (vaults.length === 0) {
-    console.log("No Obsidian vaults detected.");
-    console.log("\nOptions:");
-    console.log("  Install Obsidian: https://obsidian.md");
-    console.log("  Or use plain mode: agentlog init --plain ~/path/to/folder");
-    return;
-  }
-  console.log("Detected Obsidian vaults:");
-  vaults.forEach((v, i) => {
-    console.log(`  ${i + 1}) ${v.path}`);
-  });
-
-  // CLI detection
-  const cli = detectCli();
-  console.log("");
-  if (cli.installed) {
-    console.log(`Obsidian CLI: ${cli.binPath} (${cli.version ?? "version unknown"})`);
-  } else {
-    console.log("Obsidian CLI: not detected");
-    console.log("  Enable in Obsidian 1.12+ Settings > General > Command line interface");
-  }
-}
-
 function uninstallClaude(configDirPath: string): void {
   // Remove hook from ~/.claude/settings.json
   const hookRemoved = unregisterHook();
@@ -433,56 +295,115 @@ function uninstallCodex(clearRestoreMetadata: boolean): void {
   console.log("\nCodex integration uninstalled.");
 }
 
-async function cmdUninstall(args: string[]): Promise<void> {
-  const { skipConfirm, target, dryRun } = parseUninstallArgs(args);
-  const cfgDir = configDir();
+// --- Command implementations ---
 
-  if (dryRun) {
-    const claudeSettingsPath = CLAUDE_SETTINGS_PATH;
-    if (target === "codex" || target === "all") {
-      console.log(`[dry-run] Would restore/remove Codex notify: ${CODEX_CONFIG_PATH}`);
-    }
-    if (target === "claude" || target === "all") {
-      console.log(`[dry-run] Would remove hook from: ${claudeSettingsPath}`);
-      console.log(`[dry-run] Would delete config at: ${cfgDir}`);
-    }
-    console.log("[dry-run] No changes were made.");
-    return;
+async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): Promise<void> {
+  if (!vaultArg && target !== "codex") {
+    console.error("Error: --dry-run requires a vault path argument");
+    process.exit(1);
   }
-  if (!skipConfirm && process.stdin.isTTY) {
-    const prompt = target === "all"
-      ? "Remove AgentLog Claude hook, Codex notify, and config? [y/N]: "
-      : target === "codex"
-        ? "Remove AgentLog Codex notify integration? [y/N]: "
-        : "Remove AgentLog hook and config? [y/N]: ";
-    const answer = await ask(prompt);
-    if (answer.toLowerCase() !== "y") {
-      console.log("Aborted.");
-      return;
+
+  if (vaultArg) {
+    const { vault, error } = validateVault(vaultArg, plain);
+    if (error) {
+      console.error(error);
+      process.exit(1);
     }
   }
 
-  if (target === "codex") {
-    uninstallCodex(true);
-    return;
-  }
+  const cfgPath = configPath();
+  const claudeSettingsPath = CLAUDE_SETTINGS_PATH;
 
-  if (target === "all") {
-    uninstallCodex(false);
-  } else {
-    // Check if Codex notify is still registered
-    const config = loadConfig();
-    if (config?.codexNotifyRestore) {
-      console.warn(
-        "⚠️  Codex notify is still registered. Run `agentlog uninstall --all` to also remove it."
-      );
-    }
+  console.log("[dry-run] Validation passed. No changes were made.");
+  if (target === "hook" || target === "all") {
+    console.log(`  Would save config to: ${cfgPath}`);
+    if (vaultArg) console.log(`    vault: ${resolve(expandHome(vaultArg))}${plain ? " (plain mode)" : ""}`);
+    console.log(`  Would register hook in: ${claudeSettingsPath}`);
   }
-
-  uninstallClaude(cfgDir);
+  if (target === "codex" || target === "all") {
+    console.log(`  Would register codex notify integration`);
+  }
 }
 
-/** agentlog doctor — check installation health */
+async function cmdInit(vaultArg: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; all: boolean; dryRun: boolean }): Promise<void> {
+  const { plain, dryRun } = opts;
+
+  if ((opts.all && (opts.claude || opts.codex)) || (opts.claude && opts.codex)) {
+    console.error("Error: choose exactly one target: --claude, --codex, or --all");
+    process.exit(1);
+  }
+
+  const target: InitTarget = opts.all ? "all" : opts.codex ? "codex" : "claude";
+
+  if (dryRun) {
+    await cmdInitDryRun(vaultArg ?? "", plain, target === "claude" ? "hook" : target);
+    return;
+  }
+
+  const runner = target === "all" ? runAllInit : target === "codex" ? runCodexInit : runInit;
+
+  if (!vaultArg) {
+    await interactiveInit(plain, runner);
+    return;
+  }
+
+  await runner(vaultArg, plain);
+}
+
+async function cmdDetect(opts: { format: string; fields?: string }): Promise<void> {
+  const vaults = detectVaults();
+  const cli = detectCli();
+
+  if (opts.format === "json") {
+    let vaultData: Array<Record<string, unknown>> = vaults.map((v) => ({ path: v.path }));
+    const cliData: Record<string, unknown> = {
+      installed: cli.installed,
+      binPath: cli.binPath ?? null,
+      version: cli.version ?? null,
+    };
+
+    if (opts.fields) {
+      const fields = opts.fields.split(",").map((f) => f.trim());
+      vaultData = vaultData.map((v) => {
+        const filtered: Record<string, unknown> = {};
+        for (const f of fields) {
+          if (f in v) filtered[f] = v[f];
+        }
+        return filtered;
+      });
+      const filteredCli: Record<string, unknown> = {};
+      for (const f of fields) {
+        if (f in cliData) filteredCli[f] = cliData[f];
+      }
+      console.log(JSON.stringify({ status: "success", data: { vaults: vaultData, cli: filteredCli } }));
+      return;
+    }
+
+    console.log(JSON.stringify({ status: "success", data: { vaults: vaultData, cli: cliData } }));
+    return;
+  }
+
+  if (vaults.length === 0) {
+    console.log("No Obsidian vaults detected.");
+    console.log("\nOptions:");
+    console.log("  Install Obsidian: https://obsidian.md");
+    console.log("  Or use plain mode: agentlog init --plain ~/path/to/folder");
+    return;
+  }
+  console.log("Detected Obsidian vaults:");
+  vaults.forEach((v, i) => {
+    console.log(`  ${i + 1}) ${v.path}`);
+  });
+
+  console.log("");
+  if (cli.installed) {
+    console.log(`Obsidian CLI: ${cli.binPath} (${cli.version ?? "version unknown"})`);
+  } else {
+    console.log("Obsidian CLI: not detected");
+    console.log("  Enable in Obsidian 1.12+ Settings > General > Command line interface");
+  }
+}
+
 async function cmdDoctor(): Promise<void> {
   const version = readVersion(resolvePackageRoot());
   if (version) console.log(`${formatVersionHeadline({ version })}\n`);
@@ -649,7 +570,6 @@ async function cmdDoctor(): Promise<void> {
   }
 }
 
-/** agentlog open — open today's Daily Note in Obsidian via CLI */
 async function cmdOpen(): Promise<void> {
   const proc = spawnSync("obsidian", ["daily"], {
     encoding: "utf-8",
@@ -664,26 +584,34 @@ async function cmdOpen(): Promise<void> {
   }
 }
 
-async function cmdCodexDebug(args: string[]): Promise<void> {
-  const prompt = args.join(" ").trim();
-  if (!prompt) {
+async function cmdHook(): Promise<void> {
+  // Dynamically import hook to avoid loading it unless needed
+  await import("./hook.js");
+}
+
+async function cmdCodexNotify(outputFile: string | undefined): Promise<void> {
+  const { runCodexNotify } = await import("./codex-notify.js");
+  await runCodexNotify(outputFile);
+}
+
+async function cmdCodexDebug(prompt: string[]): Promise<void> {
+  const text = prompt.join(" ").trim();
+  if (!text) {
     console.error("Error: prompt is required");
     process.exit(1);
   }
 
   // Ensure codex notify is registered so logging works
-  const { registerCodexNotify } = await import("./codex-settings.js");
   const config = loadConfig();
   const result = registerCodexNotify(config?.codexNotifyRestore ?? null);
   if (result.changed) {
     console.log("[agentlog] codex notify registered");
-    // Persist restore state so uninstall can undo it
     if (config) {
       saveConfig({ ...config, codexNotifyRestore: result.restoreNotify });
     }
   }
 
-  const proc = spawnSync("codex", ["exec", "--", prompt], {
+  const proc = spawnSync("codex", ["exec", "--", text], {
     stdio: "inherit",
   });
 
@@ -695,55 +623,91 @@ async function cmdCodexDebug(args: string[]): Promise<void> {
   process.exit(proc.status ?? 1);
 }
 
-async function cmdCodexNotify(args: string[]): Promise<void> {
-  const { runCodexNotify } = await import("./codex-notify.js");
-  const rawArg = args.length > 0 ? args.join(" ") : undefined;
-  await runCodexNotify(rawArg);
-}
-
-async function cmdHook(): Promise<void> {
-  // Dynamically import hook to avoid loading it unless needed
-  await import("./hook.js");
-}
-
 async function cmdVersion(): Promise<void> {
   console.log(formatVersionOutput(getRuntimeInfo()));
 }
 
-/** agentlog validate — structured pass/fail checks, exit 0 if all required pass */
+async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dryRun: boolean }): Promise<void> {
+  if (opts.codex && opts.all) {
+    console.error("Error: choose at most one uninstall target: --codex or --all");
+    process.exit(1);
+  }
+
+  const target: UninstallTarget = opts.all ? "all" : opts.codex ? "codex" : "claude";
+  const cfgDir = configDir();
+
+  if (opts.dryRun) {
+    console.log("[dry-run] Would remove the following:");
+    if (target === "claude" || target === "all") {
+      console.log(`  Would remove hook from: ${CLAUDE_SETTINGS_PATH}`);
+      console.log(`  Would remove config dir: ${cfgDir}`);
+    }
+    if (target === "codex" || target === "all") {
+      console.log(`  Would restore codex notify: ${CODEX_CONFIG_PATH}`);
+    }
+    return;
+  }
+
+  if (!opts.y && process.stdin.isTTY) {
+    const prompt = target === "all"
+      ? "Remove AgentLog Claude hook, Codex notify, and config? [y/N]: "
+      : target === "codex"
+        ? "Remove AgentLog Codex notify integration? [y/N]: "
+        : "Remove AgentLog hook and config? [y/N]: ";
+    const answer = await ask(prompt);
+    if (answer.toLowerCase() !== "y") {
+      console.log("Aborted.");
+      return;
+    }
+  }
+
+  if (target === "codex") {
+    uninstallCodex(true);
+    return;
+  }
+
+  if (target === "all") {
+    uninstallCodex(false);
+  } else {
+    // Check if Codex notify is still registered
+    const config = loadConfig();
+    if (config?.codexNotifyRestore) {
+      console.warn(
+        "⚠️  Codex notify is still registered. Run `agentlog uninstall --all` to also remove it."
+      );
+    }
+  }
+
+  uninstallClaude(cfgDir);
+}
+
 async function cmdValidate(): Promise<void> {
   let allOk = true;
-  const results: Array<{ check: string; status: "ok" | "fail"; detail: string }> = [];
 
-  function check(name: string, ok: boolean, detail: string): void {
-    results.push({ check: name, status: ok ? "ok" : "fail", detail });
-    if (!ok) allOk = false;
-  }
-
-  // 1. Config present
+  // 1. Config check
   const config = loadConfig();
-  const cfgExists = existsSync(configPath());
-  check("config", !!config, config ? configPath() : cfgExists ? "invalid config.json (parse error)" : "no config.json");
-
-  // 2. Vault exists
-  if (config) {
-    if (config.plain) {
-      const vaultOk = existsSync(config.vault);
-      check("vault", vaultOk, vaultOk ? config.vault : `not found: ${config.vault}`);
-    } else {
-      const vaultOk = existsSync(join(config.vault, ".obsidian"));
-      check("vault", vaultOk, vaultOk ? config.vault : `.obsidian not found: ${config.vault}`);
-    }
+  if (!config) {
+    console.log("config: fail — not configured");
+    allOk = false;
   } else {
-    check("vault", false, "skipped (no config)");
+    const vaultExists = config.plain
+      ? existsSync(config.vault)
+      : existsSync(join(config.vault, ".obsidian"));
+    if (vaultExists) {
+      console.log(`config: ok — ${config.vault}${config.plain ? " (plain)" : ""}`);
+    } else {
+      console.log(`config: fail — vault not found: ${config.vault}`);
+      allOk = false;
+    }
   }
 
-  // 3. Hook registered
+  // 2. Hook check
   const hookOk = isHookRegistered();
-  check("hook", hookOk, hookOk ? CLAUDE_SETTINGS_PATH : "not registered");
-
-  for (const r of results) {
-    console.log(`${r.check}: ${r.status} (${r.detail})`);
+  if (hookOk) {
+    console.log(`hook: ok — ${CLAUDE_SETTINGS_PATH}`);
+  } else {
+    console.log("hook: fail — not registered");
+    allOk = false;
   }
 
   if (!allOk) {
@@ -751,42 +715,244 @@ async function cmdValidate(): Promise<void> {
   }
 }
 
-// --- Main dispatch ---
+// --- Schema command data ---
 
-const [, , command, ...rest] = process.argv;
+const SCHEMA_DATA = {
+  commands: [
+    {
+      name: "init",
+      description: "Configure Claude hook, Codex notify, or both",
+      arguments: [{ name: "vault", description: "Path to Obsidian vault or plain folder", required: false }],
+      options: [
+        { flags: "--plain", description: "Write to plain folder without Obsidian timeblock parsing" },
+        { flags: "--claude", description: "Register Claude Code hook only (default)" },
+        { flags: "--codex", description: "Register Codex notify only" },
+        { flags: "--all", description: "Register both Claude hook and Codex notify" },
+        { flags: "--dry-run", description: "Show what would happen without making changes" },
+        { flags: "--format <format>", description: "Output format: text or json" },
+      ],
+    },
+    {
+      name: "detect",
+      description: "List detected Obsidian vaults",
+      arguments: [],
+      options: [
+        { flags: "--format <format>", description: "Output format: text or json" },
+        { flags: "--fields <fields>", description: "Comma-separated fields to include in JSON output" },
+      ],
+    },
+    {
+      name: "doctor",
+      description: "Check installation health",
+      arguments: [],
+      options: [
+        { flags: "--format <format>", description: "Output format: text or json" },
+      ],
+    },
+    {
+      name: "open",
+      description: "Open today's Daily Note in Obsidian (CLI)",
+      arguments: [],
+      options: [
+        { flags: "--format <format>", description: "Output format: text or json" },
+      ],
+    },
+    {
+      name: "uninstall",
+      description: "Remove Claude hook, Codex notify, or both",
+      arguments: [],
+      options: [
+        { flags: "-y", description: "Skip confirmation prompt" },
+        { flags: "--codex", description: "Remove Codex notify only" },
+        { flags: "--all", description: "Remove both Claude hook and Codex notify" },
+        { flags: "--dry-run", description: "Show what would happen without making changes" },
+        { flags: "--format <format>", description: "Output format: text or json" },
+      ],
+    },
+    {
+      name: "validate",
+      description: "Validate installation (machine-readable pass/fail)",
+      arguments: [],
+      options: [],
+    },
+    {
+      name: "version",
+      description: "Print version and build identity",
+      arguments: [],
+      options: [
+        { flags: "--format <format>", description: "Output format: text or json" },
+      ],
+    },
+    {
+      name: "codex-debug",
+      description: "Run codex exec with a test prompt",
+      arguments: [{ name: "prompt", description: "Prompt text to send to codex exec", required: true }],
+      options: [],
+    },
+    {
+      name: "hook",
+      description: "Run hook (called by Claude Code UserPromptSubmit)",
+      arguments: [],
+      options: [],
+    },
+    {
+      name: "codex-notify",
+      description: "Run notify handler (called by Codex on agent-turn-complete)",
+      arguments: [{ name: "output-file", description: "Output file path", required: false }],
+      options: [],
+    },
+    {
+      name: "schema",
+      description: "List all commands with their options and descriptions",
+      arguments: [{ name: "command", description: "Command name to show schema for", required: false }],
+      options: [],
+    },
+  ],
+};
 
-switch (command) {
-  case "init":
-    await cmdInit(rest);
-    break;
-  case "detect":
-    await cmdDetect();
-    break;
-  case "doctor":
+async function cmdSchema(commandName: string | undefined): Promise<void> {
+  if (commandName) {
+    const cmd = SCHEMA_DATA.commands.find((c) => c.name === commandName);
+    if (!cmd) {
+      console.log(JSON.stringify({ status: "error", error: `Unknown command: ${commandName}` }));
+      process.exit(1);
+    }
+    console.log(JSON.stringify({ status: "success", data: cmd }));
+    return;
+  }
+  console.log(JSON.stringify({ status: "success", data: SCHEMA_DATA }));
+}
+
+// --- Commander program setup ---
+
+const program = new Command();
+
+program
+  .name("agentlog")
+  .description("Auto-log Claude Code prompts to Obsidian Daily Notes")
+  .allowUnknownOption(true)
+  .configureOutput({
+    writeOut: (str) => process.stdout.write(str),
+    writeErr: (str) => process.stdout.write(str),
+  })
+  .addHelpText("after", `
+Examples:
+  agentlog init ~/path/to/vault
+  agentlog detect
+  agentlog doctor
+
+Options:
+  --plain       Write to plain folder without Obsidian timeblock parsing
+  -y            Skip confirmation prompt (for uninstall)
+`);
+
+program
+  .command("init [vault]")
+  .description("Configure Claude hook, Codex notify, or both")
+  .option("--plain", "Write to plain folder without Obsidian timeblock parsing", false)
+  .option("--claude", "Register Claude Code hook only (default)", false)
+  .option("--codex", "Register Codex notify only", false)
+  .option("--all", "Register both Claude hook and Codex notify", false)
+  .option("--dry-run", "Show what would happen without making changes", false)
+  .option("--format <format>", "Output format: text or json", "text")
+  .action(async (vault: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; all: boolean; dryRun: boolean; format: string }) => {
+    await cmdInit(vault, opts);
+  });
+
+program
+  .command("detect")
+  .description("List detected Obsidian vaults")
+  .option("--format <format>", "Output format: text or json", "text")
+  .option("--fields <fields>", "Comma-separated fields to include in JSON output")
+  .action(async (opts: { format: string; fields?: string }) => {
+    await cmdDetect(opts);
+  });
+
+program
+  .command("doctor")
+  .description("Check installation health")
+  .option("--format <format>", "Output format: text or json", "text")
+  .action(async (_opts: { format: string }) => {
     await cmdDoctor();
-    break;
-  case "validate":
-    await cmdValidate();
-    break;
-  case "codex-debug":
-    await cmdCodexDebug(rest);
-    break;
-  case "codex-notify":
-    await cmdCodexNotify(rest);
-    break;
-  case "open":
+  });
+
+program
+  .command("open")
+  .description("Open today's Daily Note in Obsidian (CLI)")
+  .option("--format <format>", "Output format: text or json", "text")
+  .action(async (_opts: { format: string }) => {
     await cmdOpen();
-    break;
-  case "uninstall":
-    await cmdUninstall(rest);
-    break;
-  case "version":
+  });
+
+program
+  .command("validate")
+  .description("Validate installation (machine-readable pass/fail)")
+  .action(async () => {
+    await cmdValidate();
+  });
+
+program
+  .command("uninstall")
+  .description("Remove Claude hook, Codex notify, or both")
+  .option("-y", "Skip confirmation prompt", false)
+  .option("--codex", "Remove Codex notify only", false)
+  .option("--all", "Remove both Claude hook and Codex notify", false)
+  .option("--dry-run", "Show what would happen without making changes", false)
+  .option("--format <format>", "Output format: text or json", "text")
+  .action(async (opts: { y: boolean; codex: boolean; all: boolean; dryRun: boolean; format: string }) => {
+    await cmdUninstall(opts);
+  });
+
+program
+  .command("version")
+  .description("Print version and build identity")
+  .option("--format <format>", "Output format: text or json", "text")
+  .action(async (_opts: { format: string }) => {
     await cmdVersion();
-    break;
-  case "hook":
+  });
+
+program
+  .command("codex-debug")
+  .description("Run codex exec with a test prompt")
+  .allowUnknownOption(true)
+  .helpOption(false)
+  .argument("[prompt...]", "Prompt text to send to codex exec")
+  .action(async (prompt: string[]) => {
+    await cmdCodexDebug(prompt);
+  });
+
+program
+  .command("hook")
+  .description("Run hook (called by Claude Code UserPromptSubmit)")
+  .action(async () => {
     await cmdHook();
-    break;
-  default:
-    usage();
-    process.exit(command ? 1 : 0);
+  });
+
+program
+  .command("codex-notify [output-file]")
+  .description("Run notify handler (called by Codex on agent-turn-complete)")
+  .action(async (outputFile: string | undefined) => {
+    await cmdCodexNotify(outputFile);
+  });
+
+program
+  .command("schema [command]")
+  .description("List all commands with their options and descriptions as JSON")
+  .action(async (commandName: string | undefined) => {
+    await cmdSchema(commandName);
+  });
+
+// Handle unknown commands
+program.on("command:*", (operands: string[]) => {
+  console.error(`error: unknown command '${operands[0]}'`);
+  console.error(`\nUsage: agentlog [command]\nRun 'agentlog --help' for available commands.`);
+  process.exit(1);
+});
+
+await program.parseAsync(process.argv);
+
+// If no subcommand was invoked, print help and exit 0
+if (!process.argv.slice(2).length) {
+  program.outputHelp();
+  process.exit(0);
 }

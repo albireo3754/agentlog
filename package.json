@@ -48,5 +48,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "commander": "^14.0.3"
   }
 }
