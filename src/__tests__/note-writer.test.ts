@@ -201,6 +201,22 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).toContain("- 15:00 테스트 작업");
   });
 
+  // N5b: codex source emits [[codex_...]] dividers
+  it("emits codex-prefixed divider when source is codex", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    const entry1 = makeEntry({ time: "10:53", source: "codex", sessionId: "codex111-aaaa-bbbb-cccc-dddddddddddd" });
+    const entry2 = makeEntry({ time: "15:00", source: "codex", sessionId: "codex222-xxxx-yyyy-zzzz-111111111111" });
+    appendEntry(config, entry1, TEST_DATE);
+    appendEntry(config, entry2, TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("- - - - [[codex_codex111]]");
+    expect(content).toContain("- - - - [[codex_codex222]]");
+    expect(content).not.toContain("claude_");
+  });
+
   // N6: different projects → separate #### sections
   it("creates separate sections for different projects", () => {
     const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
