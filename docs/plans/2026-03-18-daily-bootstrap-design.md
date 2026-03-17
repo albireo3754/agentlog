@@ -216,6 +216,58 @@ Required wording changes:
 - explain that non-plain mode depends on Obsidian CLI for authoritative Daily bootstrap
 - clarify that plain mode remains direct-file mode
 
+## Follow-up Source Docs
+
+After implementation lands, update these source docs as part of the same workstream:
+
+- [`README.md`](../../README.md)
+- [`docs/cc/hook-integration.md`](../../docs/cc/hook-integration.md)
+- [`docs/obsidian/06-official-cli-research.md`](../../docs/obsidian/06-official-cli-research.md)
+- [`docs/obsidian/README.md`](../../docs/obsidian/README.md)
+
+## Source Doc Update Guide
+
+### 1. `README.md`
+
+Update the user-facing behavior description:
+
+- replace wording that implies `daily:path` alone is a safe creation path
+- document that missing Daily Notes are bootstrapped through Obsidian CLI before AgentLog merge write
+- clarify that non-plain mode now prefers correctness over guessed fallback creation
+
+Primary sections to revise:
+
+- `How It Works`
+- `Daily Note Format`
+- `Requirements` or setup notes where CLI expectations are explained
+
+### 2. `docs/cc/hook-integration.md`
+
+Update the hook flow so it matches the new runtime behavior:
+
+- remove or rewrite any direct `{vault}/Daily/...` assumption as the main non-plain path
+- explain that the hook still fails softly, but non-plain writes now depend on authoritative Obsidian bootstrap
+- keep plain mode notes separate from Obsidian-backed mode
+
+Primary sections to revise:
+
+- `Daily Note Format`
+- `Error Handling`
+
+### 3. `docs/obsidian/06-official-cli-research.md`
+
+Convert this file from passive research into implementation-aligned guidance:
+
+- add a short "applied in AgentLog" note for `daily`, `daily:path`, and why `daily` owns missing-note bootstrap
+- record the decision that guessed fallback creation is no longer the preferred correctness path
+- keep the distinction clear between path lookup and creation semantics
+
+### 4. `docs/obsidian/README.md`
+
+Update the index so it points readers to the authoritative Daily bootstrap explanation once a dedicated document section or new doc exists.
+
+If no new Obsidian doc is added, at minimum revise the description for `06-official-cli-research.md` so readers understand it now informs the implemented bootstrap behavior.
+
 ## Acceptance Criteria
 
 1. When today's Daily Note is missing, AgentLog first triggers Obsidian's Daily bootstrap path before appending AgentLog content.

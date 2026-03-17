@@ -142,7 +142,39 @@ Check the README sections:
 - Daily Note Format
 - Requirements
 
-### Task 5: Full verification
+### Task 5: Update source docs after implementation
+
+**Files:**
+- Modify: `README.md`
+- Modify: `docs/cc/hook-integration.md`
+- Modify: `docs/obsidian/06-official-cli-research.md`
+- Modify: `docs/obsidian/README.md`
+
+**Step 1: Update the main README**
+
+Reflect the final behavior in user-facing language:
+
+- missing Daily Note bootstrap goes through Obsidian CLI
+- `daily:path` is authoritative for path lookup, not sufficient by itself for safe creation
+- non-plain mode no longer relies on guessed fallback creation
+
+**Step 2: Update Claude hook docs**
+
+Revise `docs/cc/hook-integration.md` so the non-plain write path and fail-soft behavior match the implementation.
+
+**Step 3: Update Obsidian CLI docs**
+
+Revise `docs/obsidian/06-official-cli-research.md` and `docs/obsidian/README.md` so they point to the implemented bootstrap decision rather than only background research.
+
+**Step 4: Review docs as a set**
+
+Check that all four docs agree on:
+
+- who creates the missing Daily Note
+- when AgentLog performs direct markdown merge
+- what happens when the CLI is unavailable
+
+### Task 6: Full verification
 
 **Files:**
 - Verify only
