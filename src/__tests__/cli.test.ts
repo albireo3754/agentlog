@@ -361,6 +361,25 @@ printf '%s\n' "$@" > "${argsFile}"
     expect(exitCode).toBe(1);
     expect(stderr).toContain("prompt is required");
   });
+
+  it("exits cleanly when Codex hook registration cannot parse hooks.json", async () => {
+    const binDir = join(tmpHome, "bin");
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, "codex"), "#!/bin/sh\nexit 0\n", "utf-8");
+    Bun.spawnSync(["chmod", "+x", join(binDir, "codex")]);
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeFileSync(join(tmpHome, ".codex", "hooks.json"), "{bad", "utf-8");
+
+    const { stdout, stderr, exitCode } = await runCli(["codex-debug", "hello"], {
+      HOME: tmpHome,
+      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdout + stderr).toContain("hooks.json is invalid JSON");
+    expect(stdout + stderr).not.toContain("error: script");
+    expect(stdout + stderr).not.toContain("at ");
+  });
 });
 
 describe("cli init --dry-run", () => {

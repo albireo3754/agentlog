@@ -6,7 +6,7 @@ AgentLog captures Claude Code prompts and Codex CLI turn inputs, then appends th
 
 - Config: `~/.agentlog/config.json`
 - Hook registered in: `~/.claude/settings.json`
-- Codex notify registered in: `~/.codex/config.toml`
+- Codex hook registered in: `~/.codex/hooks.json`
 - Sessions dir: `~/.agentlog/` (config only; no session JSONL in current version)
 - Config dir override: `AGENTLOG_CONFIG_DIR`
 
@@ -22,8 +22,8 @@ Saves config and registers the integration hook(s).
 |------|--------|
 | (none) | Claude hook only (default) |
 | `--claude` | Claude hook only (explicit) |
-| `--codex` | Codex notify only; requires `codex` binary in PATH |
-| `--all` | Claude hook + Codex notify; requires `codex` binary in PATH |
+| `--codex` | Codex hook only; requires `codex` binary in PATH |
+| `--all` | Claude hook + Codex hook; requires `codex` binary in PATH |
 | `--plain` | Write to a plain folder instead of an Obsidian vault |
 
 - `vault` argument is optional. Without it, the command auto-detects installed Obsidian vaults.
@@ -37,8 +37,8 @@ What `init` does (Claude target):
 
 What `init --codex` does additionally:
 1. Verifies `codex` binary is in PATH
-2. Registers `notify = ["agentlog", "codex-notify"]` in `~/.codex/config.toml`
-3. Preserves any existing `notify` command for forwarding at runtime
+2. Registers a `UserPromptSubmit` command hook in `~/.codex/hooks.json`
+3. The hook command is `agentlog hook --source codex`; review/trust it in Codex with `/hooks` if prompted
 
 Example:
 ```
@@ -95,7 +95,7 @@ Checks performed (in order):
 | `daily` | Today's Daily Note exists | warn |
 | `hook` | Hook registered in `~/.claude/settings.json` | error (warn if Codex-only) |
 | `codex-bin` | `codex` binary in PATH (if Codex configured) | error |
-| `codex` | Codex notify registered in config (if configured) | error |
+| `codex` | Codex hook registered in `~/.codex/hooks.json` (if configured) | error |
 
 Warnings (⚠️) do not affect the exit code. Errors (❌) cause exit code 1.
 
@@ -120,8 +120,8 @@ Removes AgentLog integration(s).
 | Flag | Effect |
 |------|--------|
 | (none) | Remove Claude hook from `~/.claude/settings.json` + delete `~/.agentlog/` |
-| `--codex` | Remove Codex notify from `~/.codex/config.toml` only |
-| `--all` | Remove both Claude hook + Codex notify + delete `~/.agentlog/` |
+| `--codex` | Remove Codex hook from `~/.codex/hooks.json` only |
+| `--all` | Remove both Claude hook + Codex hook + delete `~/.agentlog/` |
 | `-y` | Skip confirmation prompt |
 
 Example:
@@ -142,19 +142,19 @@ Override channel with `AGENTLOG_PHASE=dev` or `AGENTLOG_PHASE=prod`.
 
 ### `agentlog hook` (internal)
 
-Invoked automatically by Claude Code on `UserPromptSubmit`. Do not call directly.
+Invoked automatically by Claude Code or Codex on `UserPromptSubmit`. Do not call directly.
 
-Reads JSON from stdin (Claude Code hook format), extracts prompt and cwd, and appends an entry to the Daily Note. Fails silently — never interrupts Claude Code.
+Reads JSON from stdin, extracts prompt and cwd, and appends an entry to the Daily Note. Use `agentlog hook --source codex` for Codex hook registration. Fails silently — never interrupts the host agent.
 
-### `agentlog codex-notify` (internal)
+### `agentlog codex-notify` (legacy internal)
 
-Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
+Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do not use for new Codex installs.
 
 ## Operational Rules
 
 1. Run `agentlog doctor` before other commands to verify the setup is healthy.
 2. Run `agentlog init` before `agentlog hook` will work. The hook exits silently if config is missing.
-3. Do not call `agentlog hook` or `agentlog codex-notify` manually — they are registered as callbacks.
+3. Do not call `agentlog hook` or `agentlog codex-notify` manually — they are registered as callbacks. New Codex installs use `agentlog hook --source codex`.
 4. The `agentlog` binary must stay in PATH after `init`, because Claude Code invokes `agentlog hook` by name.
 5. Re-running `agentlog init` is safe — it merges into the existing config.
 6. `--claude` and `--codex` flags are mutually exclusive. Use `--all` for both.
@@ -171,7 +171,7 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 | `Error: Codex CLI not found in PATH` on `init --codex` | Install Codex CLI first |
 | `Warning: Obsidian vault not detected at: ...` on `init` | Pass `--plain` for a plain folder, or open the folder in Obsidian first |
 | `doctor` exits 1, all checks pass for ⚠️ only | Warnings are non-fatal; only ❌ errors block completion |
-| Codex notify is still registered after `uninstall` | `agentlog uninstall --all -y` |
+| Codex hook is still registered after `uninstall` | `agentlog uninstall --all -y` |
 
 ## Integration Points
 
@@ -182,11 +182,11 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 - Invocation: `agentlog hook` (receives JSON on stdin)
 - Input fields used: `prompt`, `session_id`, `cwd`
 
-### Codex CLI Notify
+### Codex CLI Hook
 
-- Event: `agent-turn-complete`
-- Registered in: `~/.codex/config.toml` as `notify = ["agentlog", "codex-notify"]`
-- Existing `notify` is preserved for forwarding
+- Event: `UserPromptSubmit`
+- Registered in: `~/.codex/hooks.json` as `agentlog hook --source codex`
+- Codex may require hook review/trust through `/hooks` before non-managed hooks run
 
 ### Obsidian CLI
 
@@ -211,7 +211,8 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 |-------|----------|-------------|
 | `vault` | yes | Absolute path to the Obsidian vault or plain output folder |
 | `plain` | no | If true, writes simple `YYYY-MM-DD.md` files without Obsidian section structure |
-| `codexNotifyRestore` | no | Previous Codex `notify` value, restored on `uninstall --codex` |
+| `codexHookInstalled` | no | Marks that AgentLog expects the Codex hook to be installed for doctor/repair checks |
+| `codexNotifyRestore` | no | Legacy metadata for older Codex `notify` installs |
 
 ## Daily Note Output Format
 

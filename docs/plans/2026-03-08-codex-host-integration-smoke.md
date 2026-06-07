@@ -1,5 +1,10 @@
 # Codex Host Integration Smoke Test Plan
 
+> Superseded: Codex integration now uses the `UserPromptSubmit` hook in
+> `~/.codex/hooks.json` (`agentlog hook --source codex`) instead of the legacy
+> `notify` command path. Use `docs/codex-hook-spec.md` as the current source of
+> truth. The original plan below is retained as historical context only.
+
 > Scope: later host integration verification only. This document does not implement the test.
 
 **Goal:** 실제 Codex CLI/TUI 세션에서 turn complete 시 `notify = ["agentlog", "codex-notify"]`가 자동 호출되는지 입증하는 host integration smoke test를 설계한다.

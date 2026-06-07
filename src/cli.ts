@@ -4,12 +4,12 @@
  *
  * Commands:
  *   agentlog init [vault] [--plain] [--claude | --codex | --all]
- *                                   — configure Claude hook, Codex notify, or both
+ *                                   — configure Claude hook, Codex hook, or both
  *   agentlog uninstall [-y] [--codex | --all]
- *                                   — remove Claude hook, Codex notify, or both
+ *                                   — remove Claude hook, Codex hook, or both
  *   agentlog detect                   — list detected Obsidian vaults
  *   agentlog hook                     — invoked by Claude Code UserPromptSubmit hook
- *   agentlog codex-notify             — invoked by Codex notify on agent-turn-complete
+ *   agentlog codex-notify             — legacy Codex notify handler
  */
 
 import { existsSync, readFileSync, rmSync } from "fs";
@@ -23,9 +23,15 @@ import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } fro
 import { registerHook, unregisterHook, isHookRegistered, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
 import { Errors, formatError } from "./errors.js";
 import {
+  CODEX_HOOKS_PATH,
+  type CodexHookMutationResult,
+  readCodexHookState,
+  registerCodexHook,
+  unregisterCodexHook,
+} from "./codex-hooks.js";
+import {
   CODEX_CONFIG_PATH,
   readCodexNotifyState,
-  registerCodexNotify,
   unregisterCodexNotify,
 } from "./codex-settings.js";
 import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo, readVersion, resolvePackageRoot } from "./version-info.js";
@@ -141,17 +147,21 @@ async function runCodexInit(vaultArg: string, plain: boolean): Promise<void> {
   }
 
   const vault = validateVaultOrExit(vaultArg, plain);
-  const existing = loadConfig();
-  const result = registerCodexNotify(existing?.codexNotifyRestore ?? null);
+  let result: CodexHookMutationResult;
+  try {
+    result = registerCodexHook();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 
-  saveMergedConfig(vault, plain, { codexNotifyRestore: result.restoreNotify });
+  saveMergedConfig(vault, plain, { codexHookInstalled: true });
   printSavedConfig(vault, plain);
   printObsidianCliStatus(plain);
   console.log(`  Codex CLI: ${codexBin}`);
-  console.log(`Codex notify registered: ${CODEX_CONFIG_PATH}`);
-  if (result.restoreNotify) {
-    console.log(`  Previous notify preserved for forwarding (${result.restoreNotify[0]})`);
-  }
+  console.log(`Codex hook registered: ${CODEX_HOOKS_PATH}`);
+  if (!result.changed) console.log(`  Existing AgentLog Codex hook left unchanged`);
+  console.log(`  Review/trust the hook in Codex with /hooks if prompted.`);
   console.log(`
 AgentLog is ready. Codex turns will be logged to your Daily Note.`);
 }
@@ -164,20 +174,24 @@ async function runAllInit(vaultArg: string, plain: boolean): Promise<void> {
   }
 
   const vault = validateVaultOrExit(vaultArg, plain);
-  const existing = loadConfig();
-  const result = registerCodexNotify(existing?.codexNotifyRestore ?? null);
+  let result: CodexHookMutationResult;
+  try {
+    result = registerCodexHook();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 
-  saveMergedConfig(vault, plain, { codexNotifyRestore: result.restoreNotify });
+  saveMergedConfig(vault, plain, { codexHookInstalled: true });
   printSavedConfig(vault, plain);
   printObsidianCliStatus(plain);
 
   registerHook();
   console.log(`Hook registered: ${CLAUDE_SETTINGS_PATH}`);
   console.log(`  Codex CLI: ${codexBin}`);
-  console.log(`Codex notify registered: ${CODEX_CONFIG_PATH}`);
-  if (result.restoreNotify) {
-    console.log(`  Previous notify preserved for forwarding (${result.restoreNotify[0]})`);
-  }
+  console.log(`Codex hook registered: ${CODEX_HOOKS_PATH}`);
+  if (!result.changed) console.log(`  Existing AgentLog Codex hook left unchanged`);
+  console.log(`  Review/trust the hook in Codex with /hooks if prompted.`);
   console.log(`
 AgentLog is ready. Claude Code prompts and Codex turns will be logged to your Daily Note.`);
 }
@@ -279,15 +293,21 @@ function uninstallClaude(configDirPath: string): void {
 
 function uninstallCodex(clearRestoreMetadata: boolean): void {
   const config = loadConfig();
-  const result = unregisterCodexNotify(config?.codexNotifyRestore ?? null);
+  const result = unregisterCodexHook();
   if (result.changed) {
-    console.log(`Codex notify restored: ${CODEX_CONFIG_PATH}`);
+    console.log(`Codex hook removed: ${CODEX_HOOKS_PATH}`);
   } else {
-    console.log("Codex notify not found (already removed or never registered)");
+    console.log("Codex hook not found (already removed or never registered)");
+  }
+
+  const legacyNotify = unregisterCodexNotify(config?.codexNotifyRestore ?? null);
+  if (legacyNotify.changed) {
+    console.log(`Legacy Codex notify restored: ${CODEX_CONFIG_PATH}`);
   }
 
   if (clearRestoreMetadata && config) {
     const next: AgentLogConfig = { ...config };
+    delete next.codexHookInstalled;
     delete next.codexNotifyRestore;
     saveConfig(next);
   }
@@ -321,7 +341,7 @@ async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): 
     console.log(`  Would register hook in: ${claudeSettingsPath}`);
   }
   if (target === "codex" || target === "all") {
-    console.log(`  Would register codex notify integration`);
+    console.log(`  Would register codex hook integration in: ${CODEX_HOOKS_PATH}`);
   }
 }
 
@@ -517,9 +537,15 @@ async function cmdDoctor(): Promise<void> {
     }
   }
 
+  const hasCodexHookMetadata = config?.codexHookInstalled === true;
   const hasRestoreMetadata = !!config && Object.prototype.hasOwnProperty.call(config, "codexNotifyRestore");
-  const codexState = readCodexNotifyState();
-  const codexRelevant = hasRestoreMetadata || codexState.kind !== "missing";
+  const codexHookState = readCodexHookState();
+  const legacyNotifyState = readCodexNotifyState();
+  const codexRelevant =
+    hasCodexHookMetadata ||
+    hasRestoreMetadata ||
+    codexHookState.kind !== "missing" ||
+    legacyNotifyState.kind !== "missing";
 
   // 6. Hook registered
   const hookOk = isHookRegistered();
@@ -531,7 +557,7 @@ async function cmdDoctor(): Promise<void> {
     codexRelevant
   );
 
-  // 7. Codex notify checks (only when configured or explicitly requested)
+  // 7. Codex hook checks (only when configured or explicitly requested)
   if (codexRelevant) {
     const codexBinPath = detectBinary("codex");
     check(
@@ -541,22 +567,28 @@ async function cmdDoctor(): Promise<void> {
       "install Codex CLI, then re-run: agentlog init --codex ~/path/to/vault"
     );
 
-    const detail = codexState.kind === "unsupported"
-      ? `${CODEX_CONFIG_PATH} — unsupported notify config (${codexState.reason})`
-      : codexState.kind === "registered"
-        ? `${CODEX_CONFIG_PATH} — notify registered`
-        : hasRestoreMetadata
-          ? `${CODEX_CONFIG_PATH} — not registered (inconsistent state)`
-          : `${CODEX_CONFIG_PATH} — not registered`;
+    const detail = codexHookState.kind === "unsupported"
+      ? `${CODEX_HOOKS_PATH} — unsupported hook config (${codexHookState.reason})`
+      : codexHookState.kind === "registered"
+        ? `${CODEX_HOOKS_PATH} — hook registered`
+        : hasCodexHookMetadata
+          ? `${CODEX_HOOKS_PATH} — not registered (inconsistent state)`
+          : legacyNotifyState.kind === "registered"
+            ? `${CODEX_CONFIG_PATH} — legacy notify registered; migrate to hooks`
+            : legacyNotifyState.kind === "unsupported"
+              ? `${CODEX_CONFIG_PATH} — unsupported legacy notify config (${legacyNotifyState.reason})`
+              : `${CODEX_HOOKS_PATH} — not registered`;
 
     check(
       "codex",
-      codexState.kind === "registered",
+      codexHookState.kind === "registered",
       detail,
-      codexState.kind === "unsupported"
-        ? "use a top-level single-line notify array or run: agentlog init --codex after simplifying config"
-        : hasRestoreMetadata
-          ? "run: agentlog init --codex to repair inconsistent state"
+      codexHookState.kind === "unsupported"
+        ? "fix hooks.json or move it aside, then run: agentlog init --codex"
+        : legacyNotifyState.kind === "unsupported"
+          ? "simplify legacy notify config or move config.toml aside, then run: agentlog init --codex"
+          : hasCodexHookMetadata || hasRestoreMetadata || legacyNotifyState.kind === "registered"
+            ? "run: agentlog init --codex to repair or migrate to hooks"
           : "run: agentlog init --codex ~/path/to/vault"
     );
   }
@@ -584,7 +616,7 @@ async function cmdOpen(): Promise<void> {
   }
 }
 
-async function cmdHook(): Promise<void> {
+async function cmdHook(_source: "claude" | "codex" = "claude"): Promise<void> {
   // Dynamically import hook to avoid loading it unless needed
   await import("./hook.js");
 }
@@ -601,13 +633,19 @@ async function cmdCodexDebug(prompt: string[]): Promise<void> {
     process.exit(1);
   }
 
-  // Ensure codex notify is registered so logging works
+  // Ensure Codex hook is registered so logging works
   const config = loadConfig();
-  const result = registerCodexNotify(config?.codexNotifyRestore ?? null);
+  let result: CodexHookMutationResult;
+  try {
+    result = registerCodexHook();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
   if (result.changed) {
-    console.log("[agentlog] codex notify registered");
+    console.log("[agentlog] codex hook registered");
     if (config) {
-      saveConfig({ ...config, codexNotifyRestore: result.restoreNotify });
+      saveConfig({ ...config, codexHookInstalled: true });
     }
   }
 
@@ -643,16 +681,17 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dr
       console.log(`  Would remove config dir: ${cfgDir}`);
     }
     if (target === "codex" || target === "all") {
-      console.log(`  Would restore codex notify: ${CODEX_CONFIG_PATH}`);
+      console.log(`  Would remove codex hook from: ${CODEX_HOOKS_PATH}`);
+      console.log(`  Would restore legacy codex notify from: ${CODEX_CONFIG_PATH}`);
     }
     return;
   }
 
   if (!opts.y && process.stdin.isTTY) {
     const prompt = target === "all"
-      ? "Remove AgentLog Claude hook, Codex notify, and config? [y/N]: "
+      ? "Remove AgentLog Claude hook, Codex hook, and config? [y/N]: "
       : target === "codex"
-        ? "Remove AgentLog Codex notify integration? [y/N]: "
+        ? "Remove AgentLog Codex hook integration? [y/N]: "
         : "Remove AgentLog hook and config? [y/N]: ";
     const answer = await ask(prompt);
     if (answer.toLowerCase() !== "y") {
@@ -669,11 +708,11 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dr
   if (target === "all") {
     uninstallCodex(false);
   } else {
-    // Check if Codex notify is still registered
-    const config = loadConfig();
-    if (config?.codexNotifyRestore) {
+    // Check if Codex hook is still registered
+    const codexHookState = readCodexHookState();
+    if (codexHookState.kind === "registered") {
       console.warn(
-        "⚠️  Codex notify is still registered. Run `agentlog uninstall --all` to also remove it."
+        "⚠️  Codex hook is still registered. Run `agentlog uninstall --all` to also remove it."
       );
     }
   }
@@ -721,13 +760,13 @@ const SCHEMA_DATA = {
   commands: [
     {
       name: "init",
-      description: "Configure Claude hook, Codex notify, or both",
+      description: "Configure Claude hook, Codex hook, or both",
       arguments: [{ name: "vault", description: "Path to Obsidian vault or plain folder", required: false }],
       options: [
         { flags: "--plain", description: "Write to plain folder without Obsidian timeblock parsing" },
         { flags: "--claude", description: "Register Claude Code hook only (default)" },
-        { flags: "--codex", description: "Register Codex notify only" },
-        { flags: "--all", description: "Register both Claude hook and Codex notify" },
+        { flags: "--codex", description: "Register Codex hook only" },
+        { flags: "--all", description: "Register both Claude hook and Codex hook" },
         { flags: "--dry-run", description: "Show what would happen without making changes" },
         { flags: "--format <format>", description: "Output format: text or json" },
       ],
@@ -759,12 +798,12 @@ const SCHEMA_DATA = {
     },
     {
       name: "uninstall",
-      description: "Remove Claude hook, Codex notify, or both",
+      description: "Remove Claude hook, Codex hook, or both",
       arguments: [],
       options: [
         { flags: "-y", description: "Skip confirmation prompt" },
-        { flags: "--codex", description: "Remove Codex notify only" },
-        { flags: "--all", description: "Remove both Claude hook and Codex notify" },
+        { flags: "--codex", description: "Remove Codex hook only" },
+        { flags: "--all", description: "Remove both Claude hook and Codex hook" },
         { flags: "--dry-run", description: "Show what would happen without making changes" },
         { flags: "--format <format>", description: "Output format: text or json" },
       ],
@@ -791,13 +830,13 @@ const SCHEMA_DATA = {
     },
     {
       name: "hook",
-      description: "Run hook (called by Claude Code UserPromptSubmit)",
+      description: "Run hook (called by Claude Code or Codex UserPromptSubmit)",
       arguments: [],
       options: [],
     },
     {
       name: "codex-notify",
-      description: "Run notify handler (called by Codex on agent-turn-complete)",
+      description: "Run legacy notify handler (called by old Codex notify on agent-turn-complete)",
       arguments: [{ name: "output-file", description: "Output file path", required: false }],
       options: [],
     },
@@ -848,11 +887,11 @@ Options:
 
 program
   .command("init [vault]")
-  .description("Configure Claude hook, Codex notify, or both")
+  .description("Configure Claude hook, Codex hook, or both")
   .option("--plain", "Write to plain folder without Obsidian timeblock parsing", false)
   .option("--claude", "Register Claude Code hook only (default)", false)
-  .option("--codex", "Register Codex notify only", false)
-  .option("--all", "Register both Claude hook and Codex notify", false)
+  .option("--codex", "Register Codex hook only", false)
+  .option("--all", "Register both Claude hook and Codex hook", false)
   .option("--dry-run", "Show what would happen without making changes", false)
   .option("--format <format>", "Output format: text or json", "text")
   .action(async (vault: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; all: boolean; dryRun: boolean; format: string }) => {
@@ -893,10 +932,10 @@ program
 
 program
   .command("uninstall")
-  .description("Remove Claude hook, Codex notify, or both")
+  .description("Remove Claude hook, Codex hook, or both")
   .option("-y", "Skip confirmation prompt", false)
-  .option("--codex", "Remove Codex notify only", false)
-  .option("--all", "Remove both Claude hook and Codex notify", false)
+  .option("--codex", "Remove Codex hook only", false)
+  .option("--all", "Remove both Claude hook and Codex hook", false)
   .option("--dry-run", "Show what would happen without making changes", false)
   .option("--format <format>", "Output format: text or json", "text")
   .action(async (opts: { y: boolean; codex: boolean; all: boolean; dryRun: boolean; format: string }) => {
@@ -923,14 +962,15 @@ program
 
 program
   .command("hook")
-  .description("Run hook (called by Claude Code UserPromptSubmit)")
-  .action(async () => {
-    await cmdHook();
+  .description("Run hook (called by Claude Code or Codex UserPromptSubmit)")
+  .option("--source <source>", "Source to record: claude or codex", "claude")
+  .action(async (opts: { source: "claude" | "codex" }) => {
+    await cmdHook(opts.source);
   });
 
 program
   .command("codex-notify [output-file]")
-  .description("Run notify handler (called by Codex on agent-turn-complete)")
+  .description("Run legacy notify handler (called by old Codex notify on agent-turn-complete)")
   .action(async (outputFile: string | undefined) => {
     await cmdCodexNotify(outputFile);
   });

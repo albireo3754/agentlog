@@ -58,6 +58,25 @@ function findPlainNotePath(vault: string): string {
   return join(vault, file);
 }
 
+function readCodexHooks(home: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(home, ".codex", "hooks.json"), "utf-8"));
+}
+
+function writeAgentlogCodexHook(home: string): void {
+  mkdirSync(join(home, ".codex"), { recursive: true });
+  writeFileSync(
+    join(home, ".codex", "hooks.json"),
+    JSON.stringify({
+      hooks: {
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: "agentlog hook --source codex" }] },
+        ],
+      },
+    }),
+    "utf-8"
+  );
+}
+
 describe("cli codex commands", () => {
   let tmpHome: string;
 
@@ -69,7 +88,7 @@ describe("cli codex commands", () => {
     rmSync(tmpHome, { recursive: true, force: true });
   });
 
-  it("init --codex creates a top-level notify when Codex config has none", async () => {
+  it("init --codex creates a UserPromptSubmit hook in Codex hooks.json", async () => {
     const vault = join(tmpHome, "Obsidian");
     const cfgDir = join(tmpHome, ".agentlog");
     const pathWithCodex = makeFakeCodexPath(tmpHome);
@@ -85,20 +104,34 @@ describe("cli codex commands", () => {
 
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
-    expect(stdout).toContain("Codex");
-    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).toContain(
-      'notify = ["agentlog", "codex-notify"]'
-    );
+    expect(stdout).toContain("Codex hook registered");
+    expect(readCodexHooks(tmpHome)).toEqual({
+      hooks: {
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: "agentlog hook --source codex" }] },
+        ],
+      },
+    });
+    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).not.toContain("agentlog\", \"codex-notify");
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(false);
   });
 
-  it("init --codex preserves an existing notify command for forward chaining", async () => {
+  it("init --codex preserves existing Codex hooks and records hook metadata", async () => {
     const vault = join(tmpHome, "Obsidian");
     const cfgDir = join(tmpHome, ".agentlog");
     const pathWithCodex = makeFakeCodexPath(tmpHome);
     mkdirSync(join(vault, ".obsidian"), { recursive: true });
     mkdirSync(join(tmpHome, ".codex"), { recursive: true });
-    writeFileSync(join(tmpHome, ".codex", "config.toml"), fixture("codex-config-existing-notify.toml"), "utf-8");
+    writeFileSync(
+      join(tmpHome, ".codex", "hooks.json"),
+      JSON.stringify({
+        hooks: {
+          Stop: [{ hooks: [{ type: "command", command: "echo stop" }] }],
+          UserPromptSubmit: [{ hooks: [{ type: "command", command: "echo prompt" }] }],
+        },
+      }),
+      "utf-8"
+    );
 
     const { exitCode } = await runCli(["init", "--codex", vault], {
       HOME: tmpHome,
@@ -107,29 +140,29 @@ describe("cli codex commands", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).toContain(
-      'notify = ["agentlog", "codex-notify"]'
-    );
+    const hooks = readCodexHooks(tmpHome) as { hooks: { Stop: unknown[]; UserPromptSubmit: unknown[] } };
+    expect(hooks.hooks.Stop).toHaveLength(1);
+    expect(hooks.hooks.UserPromptSubmit).toHaveLength(2);
     const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
-    expect(config.codexNotifyRestore).toEqual(["node", "/tmp/existing-notify.js"]);
+    expect(config.codexHookInstalled).toBe(true);
   });
 
-  it("init --codex aborts on unsupported multi-line notify arrays", async () => {
+  it("init --codex aborts on unsupported hooks.json", async () => {
     const vault = join(tmpHome, "Obsidian");
     const cfgDir = join(tmpHome, ".agentlog");
     const pathWithCodex = makeFakeCodexPath(tmpHome);
     mkdirSync(join(vault, ".obsidian"), { recursive: true });
     mkdirSync(join(tmpHome, ".codex"), { recursive: true });
-    writeFileSync(join(tmpHome, ".codex", "config.toml"), fixture("codex-config-unsupported-notify.toml"), "utf-8");
+    writeFileSync(join(tmpHome, ".codex", "hooks.json"), "{bad", "utf-8");
 
-    const { stderr, exitCode } = await runCli(["init", "--codex", vault], {
+    const { stdout, stderr, exitCode } = await runCli(["init", "--codex", vault], {
       HOME: tmpHome,
       AGENTLOG_CONFIG_DIR: cfgDir,
       PATH: pathWithCodex,
     });
 
     expect(exitCode).not.toBe(0);
-    expect(stderr).toContain("Unsupported notify");
+    expect(stdout + stderr).toContain("hooks.json is invalid JSON");
   });
 
   it("init --codex fails when Codex CLI is not installed", async () => {
@@ -159,7 +192,7 @@ describe("cli codex commands", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Hook registered");
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
-    expect(existsSync(join(tmpHome, ".codex", "config.toml"))).toBe(false);
+    expect(existsSync(join(tmpHome, ".codex", "hooks.json"))).toBe(false);
   });
 
   it("legacy codex-init command is rejected", async () => {
@@ -172,13 +205,12 @@ describe("cli codex commands", () => {
     expect(stdout + stderr).toContain("Usage:");
   });
 
-  it("init --all installs both the Claude hook and Codex notify", async () => {
+  it("init --all installs both the Claude hook and Codex hook", async () => {
     const vault = join(tmpHome, "Obsidian");
     const cfgDir = join(tmpHome, ".agentlog");
     const pathWithCodex = makeFakeCodexPath(tmpHome);
     mkdirSync(join(vault, ".obsidian"), { recursive: true });
     mkdirSync(join(tmpHome, ".codex"), { recursive: true });
-    writeFileSync(join(tmpHome, ".codex", "config.toml"), fixture("codex-config-no-notify.toml"), "utf-8");
 
     const { stdout, stderr, exitCode } = await runCli(["init", "--all", vault], {
       HOME: tmpHome,
@@ -189,11 +221,15 @@ describe("cli codex commands", () => {
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(stdout).toContain("Hook registered");
-    expect(stdout).toContain("Codex notify registered");
+    expect(stdout).toContain("Codex hook registered");
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
-    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).toContain(
-      'notify = ["agentlog", "codex-notify"]'
-    );
+    expect(readCodexHooks(tmpHome)).toEqual({
+      hooks: {
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: "agentlog hook --source codex" }] },
+        ],
+      },
+    });
   });
 
   it("codex-notify writes a Daily Note entry and forwards the saved notify command", async () => {
@@ -280,24 +316,47 @@ describe("cli codex commands", () => {
     expect(existsSync(marker)).toBe(true);
   });
 
+  it("agentlog hook --source codex writes a Codex-sourced Daily Note entry", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
+      "utf-8"
+    );
+
+    const raw = fixture("codex-hook-user-prompt-submit.json");
+    const proc = Bun.spawn([BUN_BIN, "run", CLI_PATH, "hook", "--source", "codex"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, HOME: tmpHome, AGENTLOG_CONFIG_DIR: cfgDir },
+    });
+    proc.stdin.write(raw);
+    proc.stdin.end();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toBe("");
+    expect(readFileSync(findPlainNotePath(vault), "utf-8")).toContain("Reply with exactly: OK");
+  });
+
   it("legacy codex-uninstall command is rejected", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
-    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
-    writeFileSync(
-      join(tmpHome, ".codex", "config.toml"),
-      'notify = ["agentlog", "codex-notify"]\nmodel = "gpt-5.4"\n',
-      "utf-8"
-    );
+    writeAgentlogCodexHook(tmpHome);
     writeFileSync(
       join(cfgDir, "config.json"),
-      JSON.stringify({
-        vault,
-        plain: true,
-        codexNotifyRestore: ["node", "/tmp/existing-notify.js"],
-      }),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
       "utf-8"
     );
 
@@ -310,13 +369,12 @@ describe("cli codex commands", () => {
     expect(stdout + stderr).toContain("Usage:");
   });
 
-  it("uninstall --codex restores Codex notify and keeps Claude hook plus shared config", async () => {
+  it("uninstall --codex removes Codex hook and keeps Claude hook plus shared config", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
     mkdirSync(join(tmpHome, ".claude"), { recursive: true });
-    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
     writeFileSync(
       join(tmpHome, ".claude", "settings.json"),
       JSON.stringify({
@@ -328,18 +386,10 @@ describe("cli codex commands", () => {
       }),
       "utf-8"
     );
-    writeFileSync(
-      join(tmpHome, ".codex", "config.toml"),
-      'notify = ["agentlog", "codex-notify"]\nmodel = "gpt-5.4"\n',
-      "utf-8"
-    );
+    writeAgentlogCodexHook(tmpHome);
     writeFileSync(
       join(cfgDir, "config.json"),
-      JSON.stringify({
-        vault,
-        plain: true,
-        codexNotifyRestore: ["node", "/tmp/existing-notify.js"],
-      }),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
       "utf-8"
     );
 
@@ -349,20 +399,19 @@ describe("cli codex commands", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).toContain(
-      'notify = ["node", "/tmp/existing-notify.js"]'
-    );
+    expect(existsSync(join(tmpHome, ".codex", "hooks.json"))).toBe(false);
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
     expect(existsSync(join(cfgDir, "config.json"))).toBe(true);
+    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
+    expect(config.codexHookInstalled).toBeUndefined();
   });
 
-  it("uninstall --all removes Claude state and restores the previous Codex notify command", async () => {
+  it("uninstall --all removes Claude state and Codex hook", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
     mkdirSync(join(tmpHome, ".claude"), { recursive: true });
-    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
     writeFileSync(
       join(tmpHome, ".claude", "settings.json"),
       JSON.stringify({
@@ -374,18 +423,10 @@ describe("cli codex commands", () => {
       }),
       "utf-8"
     );
-    writeFileSync(
-      join(tmpHome, ".codex", "config.toml"),
-      'notify = ["agentlog", "codex-notify"]\nmodel = "gpt-5.4"\n',
-      "utf-8"
-    );
+    writeAgentlogCodexHook(tmpHome);
     writeFileSync(
       join(cfgDir, "config.json"),
-      JSON.stringify({
-        vault,
-        plain: true,
-        codexNotifyRestore: ["node", "/tmp/existing-notify.js"],
-      }),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
       "utf-8"
     );
 
@@ -395,32 +436,21 @@ describe("cli codex commands", () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).toContain(
-      'notify = ["node", "/tmp/existing-notify.js"]'
-    );
+    expect(existsSync(join(tmpHome, ".codex", "hooks.json"))).toBe(false);
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(false);
     expect(existsSync(join(cfgDir, "config.json"))).toBe(false);
   });
 
-  it("doctor succeeds when Codex notify is installed", async () => {
+  it("doctor succeeds when Codex hook is installed", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     const pathWithCodex = makeFakeCodexPath(tmpHome);
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
-    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
-    writeFileSync(
-      join(tmpHome, ".codex", "config.toml"),
-      'notify = ["agentlog", "codex-notify"]\nmodel = "gpt-5.4"\n',
-      "utf-8"
-    );
+    writeAgentlogCodexHook(tmpHome);
     writeFileSync(
       join(cfgDir, "config.json"),
-      JSON.stringify({
-        vault,
-        plain: true,
-        codexNotifyRestore: null,
-      }),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
       "utf-8"
     );
 
@@ -432,24 +462,19 @@ describe("cli codex commands", () => {
 
     expect(exitCode).toBe(0);
     expect(stdout).toContain("codex");
-    expect(stdout).toContain("notify");
+    expect(stdout).toContain("hook registered");
   });
 
-  it("doctor fails for partial damage when AgentLog config exists but Codex notify is missing", async () => {
+  it("doctor fails for partial damage when AgentLog config expects Codex hook but it is missing", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     const pathWithCodex = makeFakeCodexPath(tmpHome);
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
     mkdirSync(join(tmpHome, ".codex"), { recursive: true });
-    writeFileSync(join(tmpHome, ".codex", "config.toml"), fixture("codex-config-no-notify.toml"), "utf-8");
     writeFileSync(
       join(cfgDir, "config.json"),
-      JSON.stringify({
-        vault,
-        plain: true,
-        codexNotifyRestore: ["node", "/tmp/existing-notify.js"],
-      }),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
       "utf-8"
     );
 
@@ -464,20 +489,15 @@ describe("cli codex commands", () => {
     expect(stdout).toContain("inconsistent");
   });
 
-  it("doctor fails when Codex notify is not registered", async () => {
+  it("doctor ignores Codex checks when no Codex integration is configured", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     const pathWithCodex = makeFakeCodexPath(tmpHome);
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
-    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
-    writeFileSync(join(tmpHome, ".codex", "config.toml"), fixture("codex-config-no-notify.toml"), "utf-8");
     writeFileSync(
       join(cfgDir, "config.json"),
-      JSON.stringify({
-        vault,
-        plain: true,
-      }),
+      JSON.stringify({ vault, plain: true }),
       "utf-8"
     );
 
@@ -488,25 +508,21 @@ describe("cli codex commands", () => {
     });
 
     expect(exitCode).not.toBe(0);
-    expect(stdout).toContain("not registered");
-    expect(stdout).not.toContain("inconsistent");
+    expect(stdout).toContain("hook       not registered");
+    expect(stdout).not.toContain("codex-bin");
   });
 
-  it("doctor reports unsupported top-level multiline notify config", async () => {
+  it("doctor reports unsupported Codex hooks.json", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     const pathWithCodex = makeFakeCodexPath(tmpHome);
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
     mkdirSync(join(tmpHome, ".codex"), { recursive: true });
-    writeFileSync(join(tmpHome, ".codex", "config.toml"), fixture("codex-config-unsupported-notify.toml"), "utf-8");
+    writeFileSync(join(tmpHome, ".codex", "hooks.json"), "{bad", "utf-8");
     writeFileSync(
       join(cfgDir, "config.json"),
-      JSON.stringify({
-        vault,
-        plain: true,
-        codexNotifyRestore: ["node", "/tmp/existing-notify.js"],
-      }),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
       "utf-8"
     );
 
