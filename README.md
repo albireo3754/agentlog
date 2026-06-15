@@ -97,7 +97,7 @@ agentlog init --plain ~/notes
 
 `agentlog init` does two things:
 1. Creates `~/.agentlog/config.json` with your vault path
-2. Registers a hook in `~/.claude/settings.json`
+2. Registers or repairs a Claude Code hook in `~/.claude/settings.json` using the string matcher format (`"matcher": ""`)
 
 Run `agentlog init` without arguments to auto-detect installed vaults.
 
@@ -169,7 +169,7 @@ Current CLI:
 | `agentlog init [vault] [--plain] [--claude\|--codex\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex hook, `--all`: both |
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
 | `agentlog codex-debug <prompt>` | Run `codex exec "<prompt>"` with Codex hook auto-registered |
-| `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI. Also checks Codex hook status if configured |
+| `agentlog doctor` | Run health checks for the binary, vault, Claude hook registration/format, and Obsidian CLI. Also checks Codex hook status if configured |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12.4+) |
 | `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
 | `agentlog uninstall [-y] [--codex\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex hook and unregister/restore legacy `~/.codex/config.toml` notify if AgentLog set it up, `--all`: Remove both |
@@ -184,6 +184,7 @@ Current CLI:
 |-------|---------|-------------|
 | `vault` | (required) | Path to the Obsidian vault or plain output folder |
 | `plain` | `false` | Plain mode that writes simple markdown files without Obsidian integration |
+| `claudeHookInstalled` | `false` | Records that AgentLog expects the Claude hook to be installed, so `doctor` does not downgrade a missing Claude hook in `--all` installs |
 | `codexHookInstalled` | `false` | Records that AgentLog expects the Codex hook to be installed, so `doctor` can detect partial damage |
 | `codexNotifyRestore` | unset | Legacy metadata for older Codex `notify` installs |
 | `englishAsk` | unset | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is `true` |

@@ -147,6 +147,9 @@ describe("cli codex commands", () => {
     });
     expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).not.toContain("agentlog\", \"codex-notify");
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(false);
+    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
+    expect(config.codexHookInstalled).toBe(true);
+    expect(config.claudeHookInstalled).toBeUndefined();
   });
 
   it("init --codex preserves existing Codex hooks and records hook metadata", async () => {
@@ -178,6 +181,7 @@ describe("cli codex commands", () => {
     expect(hooks.hooks.UserPromptSubmit).toHaveLength(2);
     const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
     expect(config.codexHookInstalled).toBe(true);
+    expect(config.claudeHookInstalled).toBeUndefined();
   });
 
   it("init --codex aborts on unsupported hooks.json", async () => {
@@ -226,6 +230,8 @@ describe("cli codex commands", () => {
     expect(stdout).toContain("Hook registered");
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
     expect(existsSync(join(tmpHome, ".codex", "hooks.json"))).toBe(false);
+    const config = JSON.parse(readFileSync(join(tmpHome, ".agentlog", "config.json"), "utf-8"));
+    expect(config.claudeHookInstalled).toBe(true);
   });
 
   it("legacy codex-init command is rejected", async () => {
@@ -263,6 +269,9 @@ describe("cli codex commands", () => {
         ],
       },
     });
+    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
+    expect(config.codexHookInstalled).toBe(true);
+    expect(config.claudeHookInstalled).toBe(true);
   });
 
   it("codex-notify writes a Daily Note entry and forwards the saved notify command", async () => {
@@ -751,6 +760,35 @@ describe("cli codex commands", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("codex");
     expect(stdout).toContain("hook registered");
+  });
+
+  it("doctor fails when config expects both hooks but the Claude hook is missing", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const pathWithCodex = makeFakeCodexPath(tmpHome);
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeAgentlogCodexHook(tmpHome);
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        codexHookInstalled: true,
+        claudeHookInstalled: true,
+      }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["doctor"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+      PATH: pathWithCodex,
+    });
+
+    expect(exitCode).not.toBe(0);
+    expect(stdout).toContain("❌ hook");
+    expect(stdout).toContain("not registered");
   });
 
   it("doctor fails for partial damage when AgentLog config expects Codex hook but it is missing", async () => {

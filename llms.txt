@@ -23,7 +23,7 @@ agentlog init --all ~/path/to/vault    # Both
 agentlog init --plain ~/notes          # Plain folder (no Obsidian)
 ```
 
-`init` writes `~/.agentlog/config.json` and registers the hook in `~/.claude/settings.json` (Claude) or `~/.codex/config.toml` (Codex). The `agentlog` binary must remain in PATH after setup.
+`init` writes `~/.agentlog/config.json` and registers the hook in `~/.claude/settings.json` (Claude) or `~/.codex/hooks.json` (Codex). The `agentlog` binary must remain in PATH after setup.
 
 Run without arguments for interactive vault auto-detection.
 
@@ -71,6 +71,8 @@ agentlog codex-notify (internal — called by Codex, not by users)
 {
   "vault": "/Users/you/Obsidian",
   "plain": false,
+  "claudeHookInstalled": true,
+  "codexHookInstalled": true,
   "codexNotifyRestore": null
 }
 ```
@@ -78,6 +80,8 @@ agentlog codex-notify (internal — called by Codex, not by users)
 Fields:
 - `vault` (required): absolute path to Obsidian vault or plain folder
 - `plain` (optional): if true, writes simple YYYY-MM-DD.md files
+- `claudeHookInstalled` (optional): marks that AgentLog expects the Claude hook to be installed
+- `codexHookInstalled` (optional): marks that AgentLog expects the Codex hook to be installed
 - `codexNotifyRestore` (optional): saved previous Codex notify value, restored on uninstall
 - `englishAsk` (optional): Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true. Results append under `## EnglishAsk`.
 

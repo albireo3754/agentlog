@@ -20,16 +20,23 @@ export const HOOK_ENTRY = {
   ],
 };
 
+export type ClaudeHookState =
+  | { kind: "registered" }
+  | { kind: "missing" }
+  | { kind: "unsupported"; reason: string };
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 /** Returns true if the given hook entry contains an "agentlog hook" command. */
 function isAgentlogHookEntry(entry: unknown): boolean {
   return (
-    typeof entry === "object" &&
-    entry !== null &&
+    isPlainObject(entry) &&
     Array.isArray((entry as Record<string, unknown>)["hooks"]) &&
     ((entry as Record<string, unknown>)["hooks"] as unknown[]).some(
       (h) =>
-        typeof h === "object" &&
-        h !== null &&
+        isPlainObject(h) &&
         (h as Record<string, unknown>)["command"] === "agentlog hook"
     )
   );
@@ -38,14 +45,54 @@ function isAgentlogHookEntry(entry: unknown): boolean {
 function readClaudeSettings(): Record<string, unknown> | null {
   if (!existsSync(CLAUDE_SETTINGS_PATH)) return null;
   try {
-    return JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8"));
+    const parsed = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8"));
+    return isPlainObject(parsed) ? parsed : null;
   } catch {
     return null;
   }
 }
 
+function readClaudeSettingsState():
+  | { kind: "missing" }
+  | { kind: "ok"; settings: Record<string, unknown> }
+  | { kind: "unsupported"; reason: string } {
+  if (!existsSync(CLAUDE_SETTINGS_PATH)) return { kind: "missing" };
+  try {
+    const parsed = JSON.parse(readFileSync(CLAUDE_SETTINGS_PATH, "utf-8"));
+    if (!isPlainObject(parsed)) {
+      return { kind: "unsupported", reason: "settings.json must be an object" };
+    }
+    return { kind: "ok", settings: parsed };
+  } catch {
+    return { kind: "unsupported", reason: "settings.json is invalid JSON" };
+  }
+}
+
 function writeClaudeSettings(settings: Record<string, unknown>): void {
   writeFileSync(CLAUDE_SETTINGS_PATH, JSON.stringify(settings, null, 2), "utf-8");
+}
+
+export function validateClaudeHookSettings(settings: Record<string, unknown>): string | null {
+  const hooks = settings["hooks"];
+  if (hooks === undefined) return null;
+  if (!isPlainObject(hooks)) return "hooks must be an object";
+
+  for (const [eventName, entries] of Object.entries(hooks)) {
+    if (!Array.isArray(entries)) return `hooks.${eventName} must be an array`;
+
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index];
+      if (!isPlainObject(entry)) return `hooks.${eventName}.${index} must be an object`;
+      if ("matcher" in entry && typeof entry["matcher"] !== "string") {
+        return `hooks.${eventName}.${index}.matcher must be a string`;
+      }
+      if (!Array.isArray(entry["hooks"])) {
+        return `hooks.${eventName}.${index}.hooks must be an array`;
+      }
+    }
+  }
+
+  return null;
 }
 
 export function unregisterHook(): boolean {
@@ -96,21 +143,32 @@ export function registerHook(): void {
   }
   const upsArr = hooks["UserPromptSubmit"] as unknown[];
 
-  // Idempotent: only add if not already registered
-  if (!upsArr.some(isAgentlogHookEntry)) {
-    upsArr.push(HOOK_ENTRY);
-  }
+  // Replace any AgentLog-owned stale hook entry with the canonical matcher string format.
+  hooks["UserPromptSubmit"] = [
+    ...upsArr.filter((entry) => !isAgentlogHookEntry(entry)),
+    HOOK_ENTRY,
+  ];
 
   writeClaudeSettings(settings);
 }
 
+export function inspectClaudeHookState(): ClaudeHookState {
+  const state = readClaudeSettingsState();
+  if (state.kind === "missing") return { kind: "missing" };
+  if (state.kind === "unsupported") return { kind: "unsupported", reason: state.reason };
+
+  const validationError = validateClaudeHookSettings(state.settings);
+  if (validationError) return { kind: "unsupported", reason: validationError };
+
+  const hooks = state.settings["hooks"] as Record<string, unknown> | undefined;
+  if (!hooks || !Array.isArray(hooks["UserPromptSubmit"])) return { kind: "missing" };
+
+  return (hooks["UserPromptSubmit"] as unknown[]).some(isAgentlogHookEntry)
+    ? { kind: "registered" }
+    : { kind: "missing" };
+}
+
 /** Returns true if the agentlog hook is registered in ~/.claude/settings.json */
 export function isHookRegistered(): boolean {
-  const settings = readClaudeSettings();
-  if (!settings) return false;
-
-  const hooks = settings["hooks"] as Record<string, unknown> | undefined;
-  if (!hooks || !Array.isArray(hooks["UserPromptSubmit"])) return false;
-
-  return (hooks["UserPromptSubmit"] as unknown[]).some(isAgentlogHookEntry);
+  return inspectClaudeHookState().kind === "registered";
 }

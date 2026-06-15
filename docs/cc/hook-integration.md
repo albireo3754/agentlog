@@ -71,7 +71,11 @@ After running `npx agentlog init <vault>`, the hook is registered in
 }
 ```
 
-The `matcher` is empty string to match all prompts regardless of content.
+The `matcher` is an empty string to match all prompts regardless of content.
+Claude Code validates this field as a string; stale object matcher entries are
+not compatible with current Claude Code settings validation. Re-running
+`agentlog init` replaces AgentLog-owned stale hook entries with the canonical
+`"matcher": ""` entry, and `agentlog doctor` reports unsupported hook shapes.
 
 ---
 

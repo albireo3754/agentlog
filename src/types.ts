@@ -4,6 +4,7 @@
 export interface AgentLogConfig {
   vault: string;
   plain?: boolean;
+  claudeHookInstalled?: boolean;
   codexHookInstalled?: boolean;
   /** Legacy metadata for pre-hook Codex notify installs. */
   codexNotifyRestore?: string[] | null;
