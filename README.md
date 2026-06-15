@@ -17,7 +17,7 @@ Install it once, start using Claude Code, and your Daily Note fills itself.
 ## What It Does
 
 ```
-Claude Code hook / Codex notify → Daily Note append
+Claude Code hook / Codex hook → Daily Note append
 ```
 
 ## Why AgentLog
@@ -71,7 +71,7 @@ AgentLog registers the Claude Code hook as `agentlog hook`, so the `agentlog` bi
 
 ### Requirements
 
-- [Claude Code](https://claude.ai/code) (hook integration) or [Codex CLI](https://developers.openai.com/codex) (`notify` integration)
+- [Claude Code](https://claude.ai/code) (hook integration) or [Codex CLI](https://developers.openai.com/codex) (hook integration)
 - [Obsidian](https://obsidian.md) (Daily Note target)
 - [Bun](https://bun.sh) (>=1.0.0) or [Node.js](https://nodejs.org) >=20
 
@@ -104,18 +104,18 @@ Run `agentlog init` without arguments to auto-detect installed vaults.
 `agentlog init --codex`:
 1. Verifies that Codex CLI is installed and available in `PATH`
 2. Creates or updates `~/.agentlog/config.json`
-3. Registers `notify = ["agentlog", "codex-notify"]` in `~/.codex/config.toml`
-4. Preserves an existing Codex `notify` command for runtime forwarding
+3. Registers a Codex `UserPromptSubmit` command hook in `~/.codex/hooks.json`
+4. Prints a reminder to review/trust the hook in Codex with `/hooks` if prompted
 
 The `default = --all` variant is intentionally not supported. `agentlog init` stays Claude-first for backward compatibility and to avoid failing on machines without Codex CLI.
 
 ### That's It
 
-Use Claude Code or Codex normally. Claude prompts are logged at prompt-submit time; Codex entries are logged when the turn completes because `notify` currently fires on `agent-turn-complete`.
+Use Claude Code or Codex normally. Claude and Codex prompts are logged from their `UserPromptSubmit` hook payloads.
 
 ### How It Works
 
-1. Claude Code fires `UserPromptSubmit`, or Codex invokes `notify` on `agent-turn-complete`
+1. Claude Code or Codex fires the `UserPromptSubmit` hook
 2. AgentLog extracts the latest user-visible input and sanitizes it
 3. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12.4+). If that fails, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md`
 4. Finds or creates a `## AgentLog` section
@@ -165,15 +165,15 @@ Current CLI:
 
 | Command | Description |
 |---------|-------------|
-| `agentlog init [vault] [--plain] [--claude\|--codex\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex notify, `--all`: both |
+| `agentlog init [vault] [--plain] [--claude\|--codex\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex hook, `--all`: both |
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
-| `agentlog codex-debug <prompt>` | Run `codex exec "<prompt>"` with notify auto-registered |
-| `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI. Also checks Codex notify status if configured |
+| `agentlog codex-debug <prompt>` | Run `codex exec "<prompt>"` with Codex hook auto-registered |
+| `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI. Also checks Codex hook status if configured |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12.4+) |
 | `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
-| `agentlog uninstall [-y] [--codex\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex notify only, `--all`: Remove both |
-| `agentlog hook` | Invoked automatically by Claude Code (not for direct use) |
-| `agentlog codex-notify` | Invoked automatically by Codex (not for direct use) |
+| `agentlog uninstall [-y] [--codex\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex hook and unregister/restore legacy `~/.codex/config.toml` notify if AgentLog set it up, `--all`: Remove both |
+| `agentlog hook` | Invoked automatically by Claude Code or Codex (not for direct use) |
+| `agentlog codex-notify` | Legacy handler for older Codex `notify` installs |
 
 ## Configuration
 
@@ -183,7 +183,8 @@ Current CLI:
 |-------|---------|-------------|
 | `vault` | (required) | Path to the Obsidian vault or plain output folder |
 | `plain` | `false` | Plain mode that writes simple markdown files without Obsidian integration |
-| `codexNotifyRestore` | unset | Previous Codex `notify` command. Used to forward/restore on Codex uninstall |
+| `codexHookInstalled` | `false` | Records that AgentLog expects the Codex hook to be installed, so `doctor` can detect partial damage |
+| `codexNotifyRestore` | unset | Legacy metadata for older Codex `notify` installs |
 | `englishAsk` | unset | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is `true` |
 
 Example EnglishAsk config:
@@ -243,6 +244,8 @@ Codex-only uninstall:
 ```bash
 agentlog uninstall --codex
 ```
+
+This removes the Codex hook and also restores or removes AgentLog's legacy `notify` entry in `~/.codex/config.toml` when present.
 
 Or remove both integrations:
 

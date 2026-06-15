@@ -1,10 +1,10 @@
 /**
  * AgentLog hook entry point.
  *
- * Invoked by Claude Code UserPromptSubmit hook via stdin JSON.
+ * Invoked by Claude Code or Codex UserPromptSubmit hook via stdin JSON.
  * Reads prompt, determines Daily Note path, delegates to note-writer.
  *
- * Design: fail silently — never interrupt Claude Code.
+ * Design: fail silently — never interrupt the host agent (Claude Code or Codex).
  */
 
 import { loadConfig } from "./config.js";
@@ -12,6 +12,13 @@ import { parseHookInput } from "./schema/hook-input.js";
 import { cwdToProject } from "./schema/daily-note.js";
 import { prettyPrompt } from "./schema/pretty-prompt.js";
 import { appendEntry } from "./note-writer.js";
+import type { SourceType } from "./types.js";
+
+function resolveSource(): SourceType {
+  const sourceIndex = process.argv.indexOf("--source");
+  const source = sourceIndex >= 0 ? process.argv[sourceIndex + 1] : "claude";
+  return source === "codex" ? "codex" : "claude";
+}
 
 /** Read all stdin as a string. Works with both Bun and Node.js. */
 function readStdin(): Promise<string> {
@@ -24,10 +31,15 @@ function readStdin(): Promise<string> {
 }
 
 async function main(): Promise<void> {
+  const source = resolveSource();
+
   // 1. Load config — if absent, hint and exit (not initialized)
   const config = loadConfig();
   if (!config) {
-    process.stderr.write("[agentlog] not initialized. Run: agentlog init ~/path/to/vault\n");
+    const initHint = source === "codex"
+      ? "agentlog init --codex ~/path/to/vault"
+      : "agentlog init ~/path/to/vault";
+    process.stderr.write(`[agentlog] not initialized. Run: ${initHint}\n`);
     return;
   }
 
@@ -37,7 +49,7 @@ async function main(): Promise<void> {
   // 3. Parse hook input
   let parsed;
   try {
-    parsed = parseHookInput(raw);
+    parsed = parseHookInput(raw, { source });
   } catch (err) {
     process.stderr.write(`[agentlog] parse error: ${err}\n`);
     return;
@@ -60,7 +72,7 @@ async function main(): Promise<void> {
     sessionId: parsed.sessionId,
     project: cwdToProject(parsed.cwd),
     cwd: parsed.cwd,
-    source: "claude" as const,
+    source,
   };
 
   try {

@@ -1,0 +1,10 @@
+{
+  "session_id": "019cb123-ac48-7d22-b5bf-195ee34699af",
+  "transcript_path": "/Users/pray/.codex/sessions/example.jsonl",
+  "cwd": "/Users/pray/opensource/agentlog",
+  "hook_event_name": "UserPromptSubmit",
+  "model": "gpt-5.5",
+  "turn_id": "019cb123-ac4f-7800-a1f9-a953dc2ce3f5",
+  "permission_mode": "default",
+  "prompt": "Reply with exactly: OK"
+}

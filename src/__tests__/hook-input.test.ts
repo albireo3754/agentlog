@@ -1,5 +1,11 @@
 import { describe, it, expect } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
 import { parseHookInput } from "../schema/hook-input.js";
+
+function fixture(name: string): string {
+  return readFileSync(join(import.meta.dir, "fixtures", name), "utf-8");
+}
 
 describe("parseHookInput", () => {
   // H1: valid input with prompt field
@@ -16,8 +22,8 @@ describe("parseHookInput", () => {
     expect(result.prompt).toBe("hello world");
   });
 
-  // H2: fallback to message.content
-  it("falls back to message.content when prompt is absent", () => {
+  // H2: Claude/backward-compatibility fallback to message.content
+  it("falls back to message.content for non-Codex hook payloads when prompt is absent", () => {
     const input = JSON.stringify({
       hook_event_name: "UserPromptSubmit",
       session_id: "abc123",
@@ -28,8 +34,8 @@ describe("parseHookInput", () => {
     expect(result.prompt).toBe("from message content");
   });
 
-  // H3: fallback to parts[].text
-  it("falls back to parts[0].text when prompt and message absent", () => {
+  // H3: Claude/backward-compatibility fallback to parts[].text
+  it("falls back to parts[0].text for non-Codex hook payloads when prompt and message absent", () => {
     const input = JSON.stringify({
       hook_event_name: "UserPromptSubmit",
       session_id: "abc123",
@@ -103,5 +109,39 @@ describe("parseHookInput", () => {
     });
     const result = parseHookInput(input);
     expect(result.prompt).toBe("agentlog 개발을 위해서 작업 진행");
+  });
+
+  it("parses the documented Codex UserPromptSubmit hook payload", () => {
+    const result = parseHookInput(fixture("codex-hook-user-prompt-submit.json"), { source: "codex" });
+
+    expect(result).toEqual({
+      sessionId: "019cb123-ac48-7d22-b5bf-195ee34699af",
+      cwd: "/Users/pray/opensource/agentlog",
+      prompt: "Reply with exactly: OK",
+    });
+  });
+
+  it("requires prompt for Codex UserPromptSubmit hook payloads", () => {
+    const input = JSON.stringify({
+      hook_event_name: "UserPromptSubmit",
+      session_id: "abc123",
+      cwd: "/some/dir",
+      model: "gpt-5.5",
+      turn_id: "turn-123",
+      message: { content: "Claude fallback must not satisfy Codex" },
+    });
+
+    expect(() => parseHookInput(input, { source: "codex" })).toThrow("prompt");
+  });
+
+  it("throws when hook_event_name is not UserPromptSubmit", () => {
+    const input = JSON.stringify({
+      hook_event_name: "Stop",
+      session_id: "abc123",
+      cwd: "/some/dir",
+      prompt: "hello",
+    });
+
+    expect(() => parseHookInput(input)).toThrow("UserPromptSubmit");
   });
 });
