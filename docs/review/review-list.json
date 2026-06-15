@@ -1,0 +1,406 @@
+{
+  "version": 1,
+  "description": "Static gates promoted from docs/review/SELF_REVIEW.md recurring AgentLog PR review findings.",
+  "rules": [
+    {
+      "id": "bug-fixture-fidelity",
+      "severity": "high",
+      "title": "Regression tests must reproduce the real bug input shape",
+      "appliesTo": {
+        "paths": ["src/__tests__/**/*.ts"],
+        "diffIncludesAny": ["App is up to date", "Obsidian installer"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\s+App is up to date\\.",
+          "message": "Add a timestamped Electron/Obsidian noise fixture, not only the bare message."
+        }
+      ]
+    },
+    {
+      "id": "cli-not-invoked-sentinel",
+      "severity": "medium",
+      "title": "Tests claiming no CLI invocation must prove it with a sentinel",
+      "appliesTo": {
+        "paths": ["src/__tests__/**/*.ts"],
+        "diffIncludesAny": ["without invoking CLI"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "sentinel",
+          "message": "Use a mock CLI that creates a sentinel file if invoked."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "existsSync\\(sentinel\\)\\)\\.toBe\\(false\\)",
+          "message": "Assert the sentinel file was not created."
+        }
+      ]
+    },
+    {
+      "id": "path-root-confinement",
+      "severity": "high",
+      "title": "Config-derived or external paths must be confined to the vault root",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["config.vault", "cliDailyPath", ".obsidian", "daily-notes.json", "join("]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "function\\s+safeVaultJoin|safeVaultJoin\\(",
+          "message": "Route config/CLI-derived path joins through a vault confinement helper."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "does not allow .*outside the vault",
+          "message": "Add a traversal or absolute-path regression test."
+        }
+      ]
+    },
+    {
+      "id": "external-cli-path-safety",
+      "severity": "high",
+      "title": "CLI stdout paths are untrusted",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["cliDailyPath()", "relativePath"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "join\\(config\\.vault,\\s*relativePath\\)",
+          "message": "Do not join CLI output directly under config.vault; confine it first."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "does not allow CLI paths outside the vault",
+          "message": "Add a regression test for unsafe CLI path output."
+        }
+      ]
+    },
+    {
+      "id": "docs-behavior-sync",
+      "severity": "medium",
+      "title": "Runtime behavior changes must be reflected in developer docs",
+      "appliesTo": {
+        "paths": ["src/note-writer.ts", "src/obsidian-cli.ts"],
+        "diffIncludesAny": [".obsidian/daily-notes.json", "fallback", "CLI"]
+      },
+      "checks": [
+        {
+          "type": "changedPathRegex",
+          "pattern": "^(AGENTS\\.md|CLAUDE\\.md|README\\.md|llms\\.txt|docs/.*\\.md)$",
+          "message": "Update docs when Daily Note path resolution order changes."
+        }
+      ]
+    },
+    {
+      "id": "docs-session-divider-length",
+      "severity": "medium",
+      "title": "Documented source-prefixed session dividers must use runtime suffix length",
+      "appliesTo": {
+        "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
+        "diffIncludesAny": ["[[claude_", "[[codex_", "session divider"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
+          "pattern": "\\[\\[(?:claude|codex)_[A-Za-z0-9]{6}\\]\\]",
+          "message": "Use 8 session-id characters in source-prefixed divider examples, matching runtime `sessionId.slice(0, 8)`."
+        }
+      ]
+    },
+    {
+      "id": "ci-main-push-coverage",
+      "severity": "medium",
+      "title": "CI should run on main pushes when main PRs are supported",
+      "appliesTo": {
+        "paths": [".github/workflows/ci.yml"],
+        "diffIncludesAny": ["pull_request", "main", "push"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": [".github/workflows/ci.yml"],
+          "pattern": "push:\\s*\\n\\s*branches:\\s*\\[[^\\]\\n]*main",
+          "message": "Include `main` in CI push branches when PRs can target main."
+        }
+      ]
+    },
+    {
+      "id": "release-main-publish-concurrency",
+      "severity": "high",
+      "title": "Main-branch publish workflows must serialize release attempts",
+      "appliesTo": {
+        "paths": [".github/workflows/release.yml"],
+        "diffIncludesAny": ["npm publish", "branches: [main]", "tag_check"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": [".github/workflows/release.yml"],
+          "pattern": "^concurrency:",
+          "message": "Add workflow-level concurrency so concurrent main pushes cannot double-publish the same version."
+        }
+      ]
+    },
+    {
+      "id": "release-tag-gate-single-path",
+      "severity": "medium",
+      "title": "Release tag checks should gate the publish path once",
+      "appliesTo": {
+        "paths": [".github/workflows/release.yml"],
+        "diffIncludesAny": ["tag_check.outputs.exists", "npm publish"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": [".github/workflows/release.yml"],
+          "pattern": "if:\\s*steps\\.tag_check\\.outputs\\.exists\\s*==\\s*'false'[\\s\\S]*if:\\s*steps\\.tag_check\\.outputs\\.exists\\s*==\\s*'false'",
+          "message": "Use a job-level publish gate instead of repeating the same tag-check condition on many steps."
+        }
+      ]
+    },
+    {
+      "id": "englishask-recursion-guard",
+      "severity": "high",
+      "title": "EnglishAsk evaluator must not recursively evaluate itself",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/codex-notify.ts"],
+          "pattern": "runCodexNotify[\\s\\S]*ENGLISHASK_GUARD_ENV[\\s\\S]*readStdin",
+          "message": "Check `AGENTLOG_ENGLISHASK_EVAL` at the start of the notify entry point before reading stdin or forwarding."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "guarded evaluator child turns|without a notify argument|AGENTLOG_ENGLISHASK_EVAL",
+          "message": "Test that guarded evaluator child notify turns create no note, no forwarded notify, and no stdin wait."
+        }
+      ]
+    },
+    {
+      "id": "englishask-raw-evaluator-input",
+      "severity": "medium",
+      "title": "EnglishAsk evaluator must receive the raw prompt, not display formatting",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator", "prettyPrompt"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/codex-notify.ts"],
+          "pattern": "const\\s+prompt\\s*=\\s*prettyPrompt\\([^)]*\\)[\\s\\S]*evaluateEnglishAsk\\(config,\\s*prompt\\s*,",
+          "message": "Pass the raw parsed prompt to EnglishAsk; reserve `prettyPrompt(...)` for Daily Note display."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "raw prompt to EnglishAsk|logging the display prompt|User prompt:\\\\n\\$\\{prompt\\}",
+          "message": "Add a regression test proving the evaluator receives raw multi-line prompt text while the note logs the display prompt."
+        }
+      ]
+    },
+    {
+      "id": "englishask-cwd-fallback",
+      "severity": "medium",
+      "title": "EnglishAsk evaluator must tolerate unavailable notify cwd",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator", "cwd"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "statSync\\(|runnableCwd\\(|process\\.cwd\\(",
+          "message": "Do not run the evaluator blindly in notify `cwd`; fall back when that path is unavailable."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "notify cwd is unavailable|missing cwd|missing-cwd",
+          "message": "Add a regression test for unavailable notify cwd, matching CI/other-machine payloads."
+        }
+      ]
+    },
+    {
+      "id": "englishask-prompt-list-line",
+      "severity": "medium",
+      "title": "EnglishAsk prompt metadata must stay on one Markdown list line",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "feedback.prompt", "[truncated]"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "listItemValue\\(|replace\\(/\\\\s\\+/",
+          "message": "Flatten stored prompt metadata before writing it as a Markdown list item."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "one Markdown list line|\\[truncated\\]",
+          "message": "Add a regression test for truncated multi-line prompt metadata in `- prompt:`."
+        }
+      ]
+    },
+    {
+      "id": "englishask-section-insertion",
+      "severity": "medium",
+      "title": "EnglishAsk feedback must be inserted inside the existing section",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["## EnglishAsk", "appendEnglishAskFeedback", "EnglishAsk"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "insertFeedbackBlock\\(|nextHeading",
+          "message": "Insert new feedback before the next top-level heading after `## EnglishAsk`, not blindly at EOF."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "existing EnglishAsk section|immediately following top-level section|## Other",
+          "message": "Add regression tests proving new feedback lands inside `## EnglishAsk`, including when the next `##` heading follows immediately."
+        }
+      ]
+    },
+    {
+      "id": "englishask-feedback-fence-safety",
+      "severity": "medium",
+      "title": "EnglishAsk feedback must not escape its Markdown code fence",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "feedback", "```"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "codeFenceFor\\(|longestBacktickRun",
+          "message": "Use a dynamic fence longer than any backtick run in evaluator feedback."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "longer Markdown fence|## Injected",
+          "message": "Add a regression test with evaluator feedback containing ``` and a heading-like line."
+        }
+      ]
+    },
+    {
+      "id": "englishask-fail-soft",
+      "severity": "high",
+      "title": "EnglishAsk evaluator failures must not break AgentLog writes",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "EnglishAsk evaluator fails",
+          "message": "Add a regression test proving AgentLog still writes when EnglishAsk fails."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "times out",
+          "message": "Add a regression test for evaluator timeout handling."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "append failures silent",
+          "message": "Add a regression test proving EnglishAsk feedback append failures stay fail-soft."
+        }
+      ]
+    },
+    {
+      "id": "plan-path-resolution-doc-contract",
+      "severity": "medium",
+      "title": "Plan docs must not describe unsafe config.vault string concatenation",
+      "appliesTo": {
+        "paths": ["docs/plans/**/*.md"],
+        "diffIncludesAny": ["config.vault", "relativePath"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["docs/plans/**/*.md"],
+          "pattern": "config\\.vault\\s*\\+\\s*relativePath",
+          "message": "Use path joining or confinement wording instead of `config.vault + relativePath` in plans."
+        }
+      ]
+    },
+    {
+      "id": "plan-cli-min-version-doc-contract",
+      "severity": "medium",
+      "title": "Plan docs must use the enforced Obsidian CLI minimum version",
+      "appliesTo": {
+        "paths": ["docs/plans/**/*.md"],
+        "diffIncludesAny": ["Obsidian CLI", "MIN_CLI_VERSION", "1.12+"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["docs/plans/**/*.md"],
+          "pattern": "Obsidian CLI[^\\n`]*1\\.12\\+",
+          "message": "Use `Obsidian CLI 1.12.4+` or reference `MIN_CLI_VERSION` in plans."
+        }
+      ]
+    },
+    {
+      "id": "format-token-validation",
+      "severity": "medium",
+      "title": "Date format token support must be explicit and tested",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["FORMAT_TOKEN_RE", "formatDailyNoteFileName", "format:"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "SUPPORTED_FORMAT_TOKENS",
+          "message": "Keep an explicit list of supported date format tokens."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "unsupported named tokens",
+          "message": "Test unsupported named tokens such as MMMM fallback to CLI."
+        },
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "includes\\(\"요\"\\)",
+          "message": "Avoid unreachable Korean-character checks on ASCII regex tokens."
+        }
+      ]
+    }
+  ]
+}

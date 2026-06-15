@@ -48,7 +48,7 @@ agentlog doctor
 
 agentlog open
     Open today's Daily Note in Obsidian via CLI.
-    Requires Obsidian 1.12+ with CLI enabled and app running.
+    Requires Obsidian 1.12.4+ with CLI enabled and app running.
 
 agentlog uninstall [-y] [--codex|--all]
     (default)  Remove Claude hook + delete ~/.agentlog/
@@ -79,9 +79,11 @@ Fields:
 - `vault` (required): absolute path to Obsidian vault or plain folder
 - `plain` (optional): if true, writes simple YYYY-MM-DD.md files
 - `codexNotifyRestore` (optional): saved previous Codex notify value, restored on uninstall
+- `englishAsk` (optional): Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true. Results append under `## EnglishAsk`.
 
 Environment variables:
 - `AGENTLOG_CONFIG_DIR`: override config directory (default: `~/.agentlog`)
+- `AGENTLOG_ENGLISHASK_EVAL`: internal guard that skips EnglishAsk evaluator child notify turns
 - `AGENTLOG_PHASE`: force channel `dev` or `prod`
 - `OBSIDIAN_BIN`: override Obsidian CLI binary path
 
@@ -95,10 +97,10 @@ Obsidian mode appends to a `## AgentLog` section, grouped by working directory:
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
-- - - - [[ses_a1b2c3d4]]
+- - - - [[claude_a1b2c3d4]]
 - 10:53 start building agentlog
 - 11:07 open the spec document
-- - - - [[ses_e5f6a7b8]]
+- - - - [[claude_e5f6a7b8]]
 - 11:21 initialize git
 ```
 
@@ -110,7 +112,7 @@ Plain mode appends to `{folder}/YYYY-MM-DD.md`:
 ```
 
 Daily Note path resolution order:
-1. `obsidian daily:path` (Obsidian CLI 1.12+, app must be running)
+1. `obsidian daily:path` (Obsidian CLI 1.12.4+, app must be running)
 2. Fallback: `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
 
 ## How the Hook Works

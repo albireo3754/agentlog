@@ -7,6 +7,23 @@ export interface AgentLogConfig {
   codexHookInstalled?: boolean;
   /** Legacy metadata for pre-hook Codex notify installs. */
   codexNotifyRestore?: string[] | null;
+  englishAsk?: EnglishAskConfig;
+}
+
+export interface EnglishAskConfig {
+  enabled?: boolean;
+  mode?: "log-only" | "suggest";
+  threshold?: number;
+  timeoutMs?: number;
+  maxPromptChars?: number;
+  maxOutputChars?: number;
+  evaluatorCommand?: string[];
+}
+
+export interface EnglishAskFeedback {
+  score: number | null;
+  prompt: string;
+  feedback: string;
 }
 
 /** Source of the log entry — which AI tool produced it */

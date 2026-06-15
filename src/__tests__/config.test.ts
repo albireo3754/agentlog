@@ -84,13 +84,24 @@ describe("config", () => {
 
   // C6: save then load round-trip
   it("saveConfig and loadConfig round-trip preserves all fields", () => {
-    const cfg = { vault: "/abs/vault", plain: true };
+    const cfg = {
+      vault: "/abs/vault",
+      plain: true,
+      englishAsk: {
+        enabled: true,
+        mode: "log-only" as const,
+        threshold: 3,
+        timeoutMs: 8000,
+      },
+    };
     saveConfig(cfg);
 
     const loaded = loadConfig();
     expect(loaded).not.toBeNull();
     expect(loaded!.vault).toBe("/abs/vault");
     expect(loaded!.plain).toBe(true);
+    expect(loaded!.englishAsk?.enabled).toBe(true);
+    expect(loaded!.englishAsk?.threshold).toBe(3);
   });
 
   // C7: expandHome with ~/

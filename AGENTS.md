@@ -106,7 +106,7 @@ agentlog doctor
 
 ### `agentlog open`
 
-Opens today's Daily Note in Obsidian using the Obsidian CLI (`obsidian daily`). Requires Obsidian 1.12+ with CLI enabled and Obsidian app running.
+Opens today's Daily Note in Obsidian using the Obsidian CLI (`obsidian daily`). Requires Obsidian 1.12.4+ with CLI enabled and Obsidian app running.
 
 Example:
 ```
@@ -191,7 +191,7 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
 ### Obsidian CLI
 
 - Used to resolve the Daily Note path via `obsidian daily:path`
-- Minimum version: checked by `doctor` (1.12+)
+- Minimum version: checked by `doctor` (1.12.4+)
 - Override binary path: `OBSIDIAN_BIN`
 - Fallback when CLI unavailable: `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
 
@@ -203,7 +203,11 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
 {
   "vault": "/Users/you/Obsidian",
   "plain": false,
-  "codexNotifyRestore": null
+  "codexNotifyRestore": null,
+  "englishAsk": {
+    "enabled": false,
+    "mode": "log-only"
+  }
 }
 ```
 
@@ -213,6 +217,9 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
 | `plain` | no | If true, writes simple `YYYY-MM-DD.md` files without Obsidian section structure |
 | `codexHookInstalled` | no | Marks that AgentLog expects the Codex hook to be installed for doctor/repair checks |
 | `codexNotifyRestore` | no | Legacy metadata for older Codex `notify` installs |
+| `englishAsk` | no | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true |
+
+EnglishAsk evaluates English Codex user prompts with `codex exec` after the normal Daily Note append. Results are written under `## EnglishAsk`; evaluator failures and timeouts are fail-soft. `AGENTLOG_ENGLISHASK_EVAL=1` skips evaluator child notify turns.
 
 ## Daily Note Output Format
 
@@ -224,10 +231,10 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
-- - - - [[ses_a1b2c3d4]]
+- - - - [[claude_a1b2c3d4]]
 - 10:53 start building agentlog
 - 11:07 open the spec document
-- - - - [[ses_e5f6a7b8]]
+- - - - [[claude_e5f6a7b8]]
 - 11:21 initialize git
 ```
 
