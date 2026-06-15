@@ -184,14 +184,14 @@
         {
           "type": "anyContentRegex",
           "paths": ["src/codex-notify.ts"],
-          "pattern": "ENGLISHASK_GUARD_ENV|AGENTLOG_ENGLISHASK_EVAL",
-          "message": "Check `AGENTLOG_ENGLISHASK_EVAL` in the notify entry point before normal writes/forwarding."
+          "pattern": "runCodexNotify[\\s\\S]*ENGLISHASK_GUARD_ENV[\\s\\S]*readStdin",
+          "message": "Check `AGENTLOG_ENGLISHASK_EVAL` at the start of the notify entry point before reading stdin or forwarding."
         },
         {
           "type": "anyContentRegex",
           "paths": ["src/__tests__/**/*.ts"],
-          "pattern": "guarded evaluator child turns|AGENTLOG_ENGLISHASK_EVAL",
-          "message": "Test that guarded evaluator child notify turns create no note and no forwarded notify."
+          "pattern": "guarded evaluator child turns|without a notify argument|AGENTLOG_ENGLISHASK_EVAL",
+          "message": "Test that guarded evaluator child notify turns create no note, no forwarded notify, and no stdin wait."
         }
       ]
     },

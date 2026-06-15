@@ -90,7 +90,7 @@ Any evaluator launched from a hook or notify path must be fail-soft and non-recu
 Check:
 
 - Child evaluator runs set an env guard before invoking Codex or other agent tooling.
-- The notify/hook path checks that guard before normal writes/forwarding and skips evaluator child turns entirely.
+- The notify/hook path checks that guard before reading stdin, normal writes, and forwarding, then skips evaluator child turns entirely.
 - Notify payload `cwd` can be stale or unavailable on CI/another machine; evaluator cwd must fall back safely.
 - Evaluator failure, non-zero exit, timeout, and feedback append failures cannot prevent the normal AgentLog write or surface as generic notify errors.
 - Prompts and evaluator output are redacted and bounded before storage.

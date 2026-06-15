@@ -35,9 +35,9 @@ function forwardNotify(raw: string, restore: string[] | null | undefined): void 
 }
 
 export async function runCodexNotify(rawArg?: string): Promise<void> {
-  const raw = rawArg ?? await readStdin();
   if (process.env[ENGLISHASK_GUARD_ENV] === "1") return;
 
+  const raw = rawArg ?? await readStdin();
   const config = loadConfig();
 
   try {

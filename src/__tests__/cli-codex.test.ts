@@ -380,6 +380,34 @@ describe("cli codex commands", () => {
     expect(existsSync(marker)).toBe(false);
   });
 
+  it("codex-notify exits immediately for guarded child turns without a notify argument", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        englishAsk: {
+          enabled: true,
+        },
+      }),
+      "utf-8"
+    );
+
+    const { exitCode, stderr } = await runCli(["codex-notify"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+      AGENTLOG_ENGLISHASK_EVAL: "1",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(readdirSync(vault).some((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name))).toBe(false);
+  });
+
   it("codex-notify still writes the note when EnglishAsk evaluator fails", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
