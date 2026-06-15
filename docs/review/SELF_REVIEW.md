@@ -73,6 +73,22 @@ Good evidence:
 - mock script with `touch <sentinel>`
 - assertion such as `expect(existsSync(sentinel)).toBe(false)`
 
+### Integration Uninstall and Migration Cleanup
+
+Install/uninstall paths mutate user-level integration files. Treat those files as external input and keep migration-era side effects explicit.
+
+Check:
+
+- Uninstall paths catch invalid or unsupported external config, such as malformed Codex `hooks.json`, and exit with a single clear message instead of a stack trace.
+- User-facing uninstall output distinguishes restoring a previous command from removing an AgentLog-owned legacy entry.
+- Docs and CLI help mention both current integration cleanup and legacy migration cleanup when a command performs both.
+
+Good evidence:
+
+- tests for invalid `hooks.json` during `uninstall --codex`
+- tests for legacy notify removal when no restore command exists
+- docs that mention legacy `notify` cleanup for Codex uninstall
+
 ### Docs Sync
 
 When runtime fallback order or behavior changes, developer docs must say the same thing.

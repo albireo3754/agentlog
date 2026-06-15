@@ -635,6 +635,56 @@ describe("cli codex commands", () => {
     expect(config.codexHookInstalled).toBeUndefined();
   });
 
+  it("uninstall --codex exits cleanly when Codex hooks.json is invalid", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeFileSync(join(tmpHome, ".codex", "hooks.json"), "{bad", "utf-8");
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
+      "utf-8"
+    );
+
+    const { exitCode, stderr } = await runCli(["uninstall", "--codex", "-y"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("hooks.json is invalid JSON");
+    expect(stderr).not.toContain("SyntaxError");
+  });
+
+  it("uninstall --codex reports legacy notify removal when no restore command exists", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".codex", "config.toml"),
+      'notify = ["agentlog", "codex-notify"]\nmodel = "gpt-5.4"\n',
+      "utf-8"
+    );
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["uninstall", "--codex", "-y"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Legacy Codex notify removed");
+    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).not.toContain("codex-notify");
+  });
+
   it("uninstall --all removes Claude state and Codex hook", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");

@@ -293,7 +293,13 @@ function uninstallClaude(configDirPath: string): void {
 
 function uninstallCodex(clearRestoreMetadata: boolean): void {
   const config = loadConfig();
-  const result = unregisterCodexHook();
+  let result: CodexHookMutationResult;
+  try {
+    result = unregisterCodexHook();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
   if (result.changed) {
     console.log(`Codex hook removed: ${CODEX_HOOKS_PATH}`);
   } else {
@@ -302,7 +308,8 @@ function uninstallCodex(clearRestoreMetadata: boolean): void {
 
   const legacyNotify = unregisterCodexNotify(config?.codexNotifyRestore ?? null);
   if (legacyNotify.changed) {
-    console.log(`Legacy Codex notify restored: ${CODEX_CONFIG_PATH}`);
+    const action = legacyNotify.restoreNotify && legacyNotify.restoreNotify.length > 0 ? "restored" : "removed";
+    console.log(`Legacy Codex notify ${action}: ${CODEX_CONFIG_PATH}`);
   }
 
   if (clearRestoreMetadata && config) {
@@ -682,7 +689,7 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dr
     }
     if (target === "codex" || target === "all") {
       console.log(`  Would remove codex hook from: ${CODEX_HOOKS_PATH}`);
-      console.log(`  Would restore legacy codex notify from: ${CODEX_CONFIG_PATH}`);
+      console.log(`  Would restore/remove legacy codex notify in: ${CODEX_CONFIG_PATH}`);
     }
     return;
   }
@@ -691,7 +698,7 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dr
     const prompt = target === "all"
       ? "Remove AgentLog Claude hook, Codex hook, and config? [y/N]: "
       : target === "codex"
-        ? "Remove AgentLog Codex hook integration? [y/N]: "
+        ? "Remove AgentLog Codex hook and legacy notify integration? [y/N]: "
         : "Remove AgentLog hook and config? [y/N]: ";
     const answer = await ask(prompt);
     if (answer.toLowerCase() !== "y") {
@@ -802,8 +809,8 @@ const SCHEMA_DATA = {
       arguments: [],
       options: [
         { flags: "-y", description: "Skip confirmation prompt" },
-        { flags: "--codex", description: "Remove Codex hook only" },
-        { flags: "--all", description: "Remove both Claude hook and Codex hook" },
+        { flags: "--codex", description: "Remove Codex hook and legacy notify integration" },
+        { flags: "--all", description: "Remove Claude hook, Codex hook, legacy notify, and config" },
         { flags: "--dry-run", description: "Show what would happen without making changes" },
         { flags: "--format <format>", description: "Output format: text or json" },
       ],
@@ -934,8 +941,8 @@ program
   .command("uninstall")
   .description("Remove Claude hook, Codex hook, or both")
   .option("-y", "Skip confirmation prompt", false)
-  .option("--codex", "Remove Codex hook only", false)
-  .option("--all", "Remove both Claude hook and Codex hook", false)
+  .option("--codex", "Remove Codex hook and legacy notify integration", false)
+  .option("--all", "Remove Claude hook, Codex hook, legacy notify, and config", false)
   .option("--dry-run", "Show what would happen without making changes", false)
   .option("--format <format>", "Output format: text or json", "text")
   .action(async (opts: { y: boolean; codex: boolean; all: boolean; dryRun: boolean; format: string }) => {
