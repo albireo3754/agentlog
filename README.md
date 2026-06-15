@@ -184,6 +184,7 @@ Current CLI:
 |-------|---------|-------------|
 | `vault` | (required) | Path to the Obsidian vault or plain output folder |
 | `plain` | `false` | Plain mode that writes simple markdown files without Obsidian integration |
+| `claudeHookInstalled` | `false` | Records that AgentLog expects the Claude hook to be installed, so `doctor` does not downgrade a missing Claude hook in `--all` installs |
 | `codexHookInstalled` | `false` | Records that AgentLog expects the Codex hook to be installed, so `doctor` can detect partial damage |
 | `codexNotifyRestore` | unset | Legacy metadata for older Codex `notify` installs |
 | `englishAsk` | unset | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is `true` |

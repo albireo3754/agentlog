@@ -311,7 +311,7 @@
       "severity": "high",
       "title": "Claude hook matcher must use the string format",
       "appliesTo": {
-        "paths": ["src/claude-settings.ts", "src/cli.ts", "src/__tests__/cli.test.ts", "README.md", "AGENTS.md", "docs/cc/**/*.md", "docs/review/SELF_REVIEW.md"],
+        "paths": ["src/claude-settings.ts", "src/cli.ts", "src/types.ts", "src/__tests__/cli.test.ts", "src/__tests__/cli-codex.test.ts", "README.md", "AGENTS.md", "docs/cc/**/*.md", "docs/review/SELF_REVIEW.md"],
         "diffIncludesAny": ["HOOK_ENTRY", "matcher", "Claude Code", "UserPromptSubmit", "agentlog hook"]
       },
       "checks": [
@@ -338,6 +338,18 @@
           "paths": ["src/__tests__/cli.test.ts"],
           "pattern": "stale AgentLog hook matcher object[\\s\\S]*matcher must be a string",
           "message": "Add regression coverage for stale object matcher migration and doctor failure."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/cli.ts"],
+          "pattern": "hasClaudeHookMetadata[\\s\\S]*hookState\\.kind === \"missing\"[\\s\\S]*!hasClaudeHookMetadata",
+          "message": "Do not use generic Codex relevance to downgrade missing Claude hook failures; require explicit Codex-only metadata."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/cli-codex.test.ts"],
+          "pattern": "expects both hooks but the Claude hook is missing",
+          "message": "Add a regression test for `--all`/both-hook installs where the Claude hook is missing."
         },
         {
           "type": "anyContentRegex",

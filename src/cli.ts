@@ -51,7 +51,7 @@ type UninstallTarget = "claude" | "codex" | "all";
 async function runInit(vaultArg: string, plain: boolean): Promise<void> {
   const vault = validateVaultOrExit(vaultArg, plain);
 
-  saveMergedConfig(vault, plain);
+  saveMergedConfig(vault, plain, { claudeHookInstalled: true });
   printSavedConfig(vault, plain);
   printObsidianCliStatus(plain);
 
@@ -105,7 +105,7 @@ async function runAllInit(vaultArg: string, plain: boolean): Promise<void> {
     process.exit(1);
   }
 
-  saveMergedConfig(vault, plain, { codexHookInstalled: true });
+  saveMergedConfig(vault, plain, { codexHookInstalled: true, claudeHookInstalled: true });
   printSavedConfig(vault, plain);
   printObsidianCliStatus(plain);
 
@@ -468,6 +468,7 @@ async function cmdDoctor(): Promise<void> {
   }
 
   const hasCodexHookMetadata = config?.codexHookInstalled === true;
+  const hasClaudeHookMetadata = config?.claudeHookInstalled === true;
   const hasRestoreMetadata = !!config && Object.prototype.hasOwnProperty.call(config, "codexNotifyRestore");
   const codexHookState = readCodexHookState();
   const legacyNotifyState = readCodexNotifyState();
@@ -492,7 +493,7 @@ async function cmdDoctor(): Promise<void> {
     hookState.kind === "unsupported"
       ? "run: agentlog init to migrate AgentLog hook, or fix Claude settings"
       : "run: agentlog init to re-register",
-    codexRelevant && hookState.kind === "missing"
+    codexRelevant && hookState.kind === "missing" && !hasClaudeHookMetadata
   );
 
   // 7. Codex hook checks (only when configured or explicitly requested)

@@ -98,14 +98,17 @@ Check:
 - AgentLog's `HOOK_ENTRY` uses `matcher: ""`, not an object matcher.
 - `agentlog init` removes AgentLog-owned stale hook entries before writing the canonical hook.
 - `agentlog doctor` and `agentlog validate` fail when the registered AgentLog hook has an unsupported matcher shape.
+- `agentlog doctor` downgrades a missing Claude hook to warn-only only for Codex-only installs; `--all` installs must still fail if the Claude hook is missing.
 - The migration preserves unrelated hook entries.
 - Docs that show the Claude hook settings example use the string matcher format.
 
 Good evidence:
 
 - a validator such as `inspectClaudeHookState()` reports unsupported Claude settings shapes
+- config metadata such as `claudeHookInstalled` distinguishes Codex-only installs from both-hook installs
 - tests for stale AgentLog object matcher migration
 - tests for doctor failure when `matcher` is an object
+- tests for doctor failure when both hooks are expected but the Claude hook is missing
 - hook integration docs showing `"matcher": ""`
 
 ### Docs Sync

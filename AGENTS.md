@@ -216,6 +216,7 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
 |-------|----------|-------------|
 | `vault` | yes | Absolute path to the Obsidian vault or plain output folder |
 | `plain` | no | If true, writes simple `YYYY-MM-DD.md` files without Obsidian section structure |
+| `claudeHookInstalled` | no | Marks that AgentLog expects the Claude hook to be installed for doctor/repair checks |
 | `codexHookInstalled` | no | Marks that AgentLog expects the Codex hook to be installed for doctor/repair checks |
 | `codexNotifyRestore` | no | Legacy metadata for older Codex `notify` installs |
 | `englishAsk` | no | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true |
