@@ -22,8 +22,8 @@ const SKIP_PATTERNS: RegExp[] = [
   /^\[AUTOPILOT/,
   /^\[RALPH LOOP/,
   /^\[MAGIC KEYWORD/,
-  /^App is up to date/,
-  /^Your Obsidian installer is out of date/,
+  /^(?:\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+)?App is up to date\.$/,
+  /^(?:\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s+)?Your Obsidian installer is out of date\.$/,
 ];
 
 /**

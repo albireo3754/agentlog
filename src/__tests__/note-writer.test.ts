@@ -81,29 +81,57 @@ describe("dailyNotePath", () => {
   });
 
   it("uses Daily Notes folder config without invoking CLI", () => {
-    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
     const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    const sentinel = join(vault, "cli-called");
     mkdirSync(join(vault, ".obsidian"), { recursive: true });
     writeFileSync(join(vault, ".obsidian", "daily-notes.json"), JSON.stringify({ folder: "Notes/Daily" }), "utf-8");
+    writeFileSync(mockBin, `#!/bin/bash\ntouch ${JSON.stringify(sentinel)}\necho "Cli/should-not-run.md"`, "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
 
     const path = dailyNotePath({ vault }, TEST_DATE);
     expect(path).toBe(join(vault, "Notes/Daily/2026-03-01-일.md"));
+    expect(existsSync(sentinel)).toBe(false);
 
+    rmSync(mockBin, { force: true });
     rmSync(vault, { recursive: true, force: true });
   });
 
   it("uses supported Daily Notes format config without invoking CLI", () => {
-    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
     const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    const sentinel = join(vault, "cli-called");
     mkdirSync(join(vault, ".obsidian"), { recursive: true });
     writeFileSync(
       join(vault, ".obsidian", "daily-notes.json"),
       JSON.stringify({ folder: "Notes", format: "YYYY/MM/YYYY-MM-DD-ddd" }),
       "utf-8",
     );
+    writeFileSync(mockBin, `#!/bin/bash\ntouch ${JSON.stringify(sentinel)}\necho "Cli/should-not-run.md"`, "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
 
     const path = dailyNotePath({ vault }, TEST_DATE);
     expect(path).toBe(join(vault, "Notes/2026/03/2026-03-01-일.md"));
+    expect(existsSync(sentinel)).toBe(false);
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("accepts a supported Daily Notes format that already includes .md", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY-MM-DD-ddd.md" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Notes/2026-03-01-일.md"));
 
     rmSync(vault, { recursive: true, force: true });
   });
@@ -125,6 +153,22 @@ describe("dailyNotePath", () => {
     expect(path).toBe(join(vault, "Cli/2026-W09.md"));
 
     rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("does not allow Daily Notes config paths outside the vault", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "../outside", format: "YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Daily/2026-03-01-일.md"));
+
     rmSync(vault, { recursive: true, force: true });
   });
 

@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, resolve, relative, isAbsolute } from "path";
 import type { AgentLogConfig, LogEntry, WriteResult } from "./types.js";
 import {
   KO_DAYS,
@@ -21,6 +21,7 @@ const FORMAT_TOKEN_RE = /YYYY|YY|MMMM|MMM|MM|M|DDDD|DDD|DD|D|dddd|ddd|dd|d/g;
 const FORMAT_ALPHA_RE = /[A-Za-z]+/g;
 
 function formatDailyNoteFileName(date: Date, format: string): string | null {
+  const baseFormat = format.endsWith(".md") ? format.slice(0, -3) : format;
   const dayShort = KO_DAYS[date.getDay()];
   const replacements: Record<string, string> = {
     YYYY: String(date.getFullYear()),
@@ -34,9 +35,17 @@ function formatDailyNoteFileName(date: Date, format: string): string | null {
     dd: dayShort,
     d: String(date.getDay()),
   };
-  const replaced = format.replace(FORMAT_TOKEN_RE, (token) => replacements[token] ?? token);
+  const replaced = baseFormat.replace(FORMAT_TOKEN_RE, (token) => replacements[token] ?? token);
   if ((replaced.match(FORMAT_ALPHA_RE) ?? []).some((token) => !token.includes("요"))) return null;
-  return replaced.endsWith(".md") ? replaced : `${replaced}.md`;
+  return `${replaced}.md`;
+}
+
+function safeVaultJoin(vault: string, ...segments: string[]): string | null {
+  const root = resolve(vault);
+  const target = resolve(root, ...segments);
+  const rel = relative(root, target);
+  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return target;
+  return null;
 }
 
 /**
@@ -54,7 +63,7 @@ function vaultDailyPath(vault: string, date: Date): string | null {
       ? formatDailyNoteFileName(date, cfg.format.trim())
       : dailyNoteFileName(date);
     if (!fileName) return null;
-    return join(vault, folder, fileName);
+    return safeVaultJoin(vault, folder, fileName);
   } catch {
     return null;
   }
