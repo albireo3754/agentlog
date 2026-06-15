@@ -83,6 +83,25 @@ Check:
 - Old statements like "always uses Obsidian CLI" are removed or qualified.
 - README/CLAUDE/docs are updated only when they are in scope.
 
+### Plan and Design Contract Drift
+
+Implementation plans and design docs must not drift from the current code contract.
+
+Check:
+
+- Plans do not require unavailable external skills, prompts, or tools.
+- Path-resolution docs match the current implementation order and fallback behavior.
+- Version requirements match exported constants and tests, such as `MIN_CLI_VERSION`.
+- Acceptance criteria have explicit test tasks, especially for preservation behavior.
+- Manual commit or staging examples include every file required by the task, or instruct the agent to inspect `git status`.
+
+Good evidence:
+
+- plan prerequisites exist locally or are replaced with repo-native instructions
+- line-level agreement between plan, design, implementation, and tests
+- test tasks that prove each user-visible acceptance criterion
+- no stale manual `git add` list after docs or tests are added
+
 ### Date Format Token Validation
 
 Supported date format tokens must be explicit and tested.
