@@ -147,7 +147,7 @@ function insertFeedbackBlock(content: string, block: string): string {
   }
 
   const bodyStart = sectionMatch.index + sectionMatch[0].length;
-  const nextHeading = /\n## /.exec(content.slice(bodyStart));
+  const nextHeading = /(^|\n)## /.exec(content.slice(bodyStart));
   const insertAt = nextHeading ? bodyStart + nextHeading.index : content.length;
   const before = content.slice(0, insertAt);
   const after = content.slice(insertAt);

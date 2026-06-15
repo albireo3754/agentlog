@@ -96,7 +96,7 @@ Check:
 - Prompts and evaluator output are redacted and bounded before storage.
 - Stored prompt metadata is flattened before being written as a Markdown list item.
 - Stored evaluator feedback cannot break out of its Markdown code fence.
-- New feedback is inserted inside the existing `## EnglishAsk` section, before the next top-level heading.
+- New feedback is inserted inside the existing `## EnglishAsk` section, before the next top-level heading, including when the next heading immediately follows the section header.
 
 Good evidence:
 

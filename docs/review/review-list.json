@@ -259,8 +259,8 @@
         {
           "type": "anyContentRegex",
           "paths": ["src/__tests__/**/*.ts"],
-          "pattern": "existing EnglishAsk section|## Other",
-          "message": "Add a regression test proving new feedback lands inside an existing `## EnglishAsk` section."
+          "pattern": "existing EnglishAsk section|immediately following top-level section|## Other",
+          "message": "Add regression tests proving new feedback lands inside `## EnglishAsk`, including when the next `##` heading follows immediately."
         }
       ]
     },

@@ -224,6 +224,32 @@ describe("EnglishAsk", () => {
     expect(content.indexOf("Needs section placement")).toBeLessThan(content.indexOf("## Other"));
   });
 
+  it("inserts feedback before an immediately following top-level section", () => {
+    const filePath = join(tmp, "2026-03-02.md");
+    writeFileSync(filePath, "## AgentLog\n- existing\n\n## EnglishAsk\n## Other\n- keep\n", "utf-8");
+    const feedback: EnglishAskFeedback = {
+      score: 2,
+      prompt: "Needs immediate section placement",
+      feedback: "Score: 2/5",
+    };
+
+    appendEnglishAskFeedback(
+      filePath,
+      feedback,
+      {
+        time: "10:54",
+        project: "js/agentlog",
+        cwd: "/Users/pray/work/js/agentlog",
+        sessionId: "abcdef12-3456",
+      },
+      { vault: tmp, englishAsk: { enabled: true } }
+    );
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content.indexOf("## EnglishAsk")).toBeLessThan(content.indexOf("Needs immediate section placement"));
+    expect(content.indexOf("Needs immediate section placement")).toBeLessThan(content.indexOf("## Other"));
+  });
+
   it("uses a longer Markdown fence when feedback contains backtick fences", () => {
     const filePath = join(tmp, "2026-03-02.md");
     const feedback: EnglishAskFeedback = {
