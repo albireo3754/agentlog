@@ -19,12 +19,23 @@ type DailyNotesConfig = {
 
 const FORMAT_TOKEN_RE = /YYYY|YY|MM|M|DD|D|dddd|ddd|dd|d/g;
 const FORMAT_ALPHA_RE = /[A-Za-z]+/g;
-const SUPPORTED_FORMAT_TOKENS = new Set(["YYYY", "YY", "MM", "M", "DD", "D", "dddd", "ddd", "dd", "d"]);
+const SUPPORTED_FORMAT_TOKENS = new Set([
+  "YYYY",
+  "YY",
+  "MM",
+  "M",
+  "DD",
+  "D",
+  "dddd",
+  "ddd",
+  "dd",
+  "d",
+]);
 
 function formatDailyNoteFileName(date: Date, format: string): string | null {
   const baseFormat = format.endsWith(".md") ? format.slice(0, -3) : format;
   const alphaTokens = baseFormat.match(FORMAT_ALPHA_RE) ?? [];
-  if (alphaTokens.some((token) => !SUPPORTED_FORMAT_TOKENS.has(token) && !token.includes("요"))) return null;
+  if (alphaTokens.some((token) => !SUPPORTED_FORMAT_TOKENS.has(token))) return null;
   const dayShort = KO_DAYS[date.getDay()];
   const replacements: Record<string, string> = {
     YYYY: String(date.getFullYear()),
