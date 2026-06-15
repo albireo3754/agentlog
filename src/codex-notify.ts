@@ -71,7 +71,7 @@ export async function runCodexNotify(rawArg?: string): Promise<void> {
       now
     );
 
-    const feedback = evaluateEnglishAsk(config, prompt, parsed.cwd);
+    const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd);
     if (feedback) {
       try {
         appendEnglishAskFeedback(result.filePath, feedback, entry, config);

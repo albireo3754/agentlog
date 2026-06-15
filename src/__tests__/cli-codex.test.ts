@@ -348,6 +348,45 @@ describe("cli codex commands", () => {
     expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("User prompt:\nReply with exactly: OK");
   });
 
+  it("codex-notify evaluates the raw prompt while logging a pretty prompt", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const evaluator = makeFakeEnglishAskEvaluator(tmpHome);
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        englishAsk: {
+          enabled: true,
+          mode: "log-only",
+          evaluatorCommand: evaluator.command,
+        },
+      }),
+      "utf-8"
+    );
+
+    const raw = JSON.stringify({
+      type: "agent-turn-complete",
+      "thread-id": "thread-raw-prompt",
+      cwd: "/Users/pray/Obsidian",
+      "input-messages": ["Line one\nLine two\nLine three"],
+    });
+    const { exitCode, stderr } = await runCli(["codex-notify", raw], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    const evaluatorInput = readFileSync(evaluator.inputPath, "utf-8");
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(content).toContain("Line one (+1 lines) Line three");
+    expect(evaluatorInput).toContain("User prompt:\nLine one\nLine two\nLine three");
+  });
+
   it("codex-notify skips guarded evaluator child turns without forwarding", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
