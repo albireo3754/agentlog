@@ -143,4 +143,13 @@ describe("cliDailyPath", () => {
     process.env.OBSIDIAN_BIN = mockBin;
     expect(cliDailyPath()).toBeNull();
   });
+
+  it("returns null when CLI outputs only Electron noise (Obsidian not running)", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-noise");
+    writeFileSync(mockBin, '#!/bin/bash\necho "2026-03-24 04:27:38 App is up to date."', "utf-8");
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliDailyPath()).toBeNull();
+  });
 });
