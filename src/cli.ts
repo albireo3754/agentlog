@@ -293,7 +293,13 @@ function uninstallClaude(configDirPath: string): void {
 
 function uninstallCodex(clearRestoreMetadata: boolean): void {
   const config = loadConfig();
-  const result = unregisterCodexHook();
+  let result: CodexHookMutationResult;
+  try {
+    result = unregisterCodexHook();
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
   if (result.changed) {
     console.log(`Codex hook removed: ${CODEX_HOOKS_PATH}`);
   } else {
@@ -302,7 +308,11 @@ function uninstallCodex(clearRestoreMetadata: boolean): void {
 
   const legacyNotify = unregisterCodexNotify(config?.codexNotifyRestore ?? null);
   if (legacyNotify.changed) {
-    console.log(`Legacy Codex notify restored: ${CODEX_CONFIG_PATH}`);
+    if (config?.codexNotifyRestore && config.codexNotifyRestore.length > 0) {
+      console.log(`Legacy Codex notify restored: ${CODEX_CONFIG_PATH}`);
+    } else {
+      console.log(`Legacy Codex notify removed: ${CODEX_CONFIG_PATH}`);
+    }
   }
 
   if (clearRestoreMetadata && config) {

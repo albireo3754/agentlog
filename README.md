@@ -171,7 +171,7 @@ Current CLI:
 | `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI. Also checks Codex hook status if configured |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12.4+) |
 | `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
-| `agentlog uninstall [-y] [--codex\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex hook only, `--all`: Remove both |
+| `agentlog uninstall [-y] [--codex\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex hook and unregister/restore legacy `~/.codex/config.toml` notify if AgentLog set it up, `--all`: Remove both |
 | `agentlog hook` | Invoked automatically by Claude Code or Codex (not for direct use) |
 | `agentlog codex-notify` | Legacy handler for older Codex `notify` installs |
 

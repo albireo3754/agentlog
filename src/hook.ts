@@ -4,7 +4,7 @@
  * Invoked by Claude Code or Codex UserPromptSubmit hook via stdin JSON.
  * Reads prompt, determines Daily Note path, delegates to note-writer.
  *
- * Design: fail silently — never interrupt Claude Code.
+ * Design: fail silently — never interrupt the host agent (Claude Code or Codex).
  */
 
 import { loadConfig } from "./config.js";

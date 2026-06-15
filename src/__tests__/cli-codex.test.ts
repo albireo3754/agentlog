@@ -601,9 +601,11 @@ describe("cli codex commands", () => {
   it("uninstall --codex removes Codex hook and keeps Claude hook plus shared config", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
+    const marker = join(tmpHome, "forwarded-restored.txt");
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
     mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
     writeFileSync(
       join(tmpHome, ".claude", "settings.json"),
       JSON.stringify({
@@ -616,23 +618,80 @@ describe("cli codex commands", () => {
       "utf-8"
     );
     writeAgentlogCodexHook(tmpHome);
+    writeFileSync(join(tmpHome, ".codex", "config.toml"), 'notify = ["agentlog", "codex-notify"]\n', "utf-8");
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        codexHookInstalled: true,
+        codexNotifyRestore: ["sh", "-lc", `printf restored > '${marker}'`],
+      }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["uninstall", "--codex", "-y"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain(`Legacy Codex notify restored: ${join(tmpHome, ".codex", "config.toml")}`);
+    expect(existsSync(join(tmpHome, ".codex", "hooks.json"))).toBe(false);
+    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).toContain(
+      `notify = ["sh", "-lc", "printf restored > '${marker}'"]`
+    );
+    expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
+    expect(existsSync(join(cfgDir, "config.json"))).toBe(true);
+    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
+    expect(config.codexHookInstalled).toBeUndefined();
+  });
+
+  it("uninstall --codex reports when it removes legacy notify without a saved restore command", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeAgentlogCodexHook(tmpHome);
+    writeFileSync(join(tmpHome, ".codex", "config.toml"), 'notify = ["agentlog", "codex-notify"]\n', "utf-8");
     writeFileSync(
       join(cfgDir, "config.json"),
       JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
       "utf-8"
     );
 
-    const { exitCode } = await runCli(["uninstall", "--codex", "-y"], {
+    const { stdout, exitCode } = await runCli(["uninstall", "--codex", "-y"], {
       HOME: tmpHome,
       AGENTLOG_CONFIG_DIR: cfgDir,
     });
 
     expect(exitCode).toBe(0);
-    expect(existsSync(join(tmpHome, ".codex", "hooks.json"))).toBe(false);
-    expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
-    expect(existsSync(join(cfgDir, "config.json"))).toBe(true);
-    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
-    expect(config.codexHookInstalled).toBeUndefined();
+    expect(stdout).toContain(`Legacy Codex notify removed: ${join(tmpHome, ".codex", "config.toml")}`);
+    expect(readFileSync(join(tmpHome, ".codex", "config.toml"), "utf-8")).not.toContain("agentlog");
+  });
+
+  it("uninstall --codex exits cleanly when hooks.json is invalid", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeFileSync(join(tmpHome, ".codex", "hooks.json"), "{bad", "utf-8");
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
+      "utf-8"
+    );
+
+    const { stdout, stderr, exitCode } = await runCli(["uninstall", "--codex", "-y"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).not.toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toBe("Unsupported Codex hooks configuration: hooks.json is invalid JSON\n");
   });
 
   it("uninstall --all removes Claude state and Codex hook", async () => {

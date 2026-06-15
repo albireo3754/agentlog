@@ -120,7 +120,7 @@ Removes AgentLog integration(s).
 | Flag | Effect |
 |------|--------|
 | (none) | Remove Claude hook from `~/.claude/settings.json` + delete `~/.agentlog/` |
-| `--codex` | Remove Codex hook from `~/.codex/hooks.json` only |
+| `--codex` | Remove Codex hook from `~/.codex/hooks.json`; also unregister/restore legacy AgentLog `notify` in `~/.codex/config.toml` when present |
 | `--all` | Remove both Claude hook + Codex hook + delete `~/.agentlog/` |
 | `-y` | Skip confirmation prompt |
 
