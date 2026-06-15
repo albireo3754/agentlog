@@ -152,6 +152,29 @@
       ]
     },
     {
+      "id": "cli-command-edge-thin",
+      "severity": "medium",
+      "title": "CLI command edge should not re-accumulate shared helpers",
+      "appliesTo": {
+        "paths": ["src/cli.ts", "src/cli-shared.ts", "docs/architecture/**/*.md"],
+        "diffIncludesAny": ["validateVault", "detectBinary", "printObsidianCliStatus", "cli-shared", "Command edge"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/cli.ts"],
+          "pattern": "function\\s+(?:validateVault|validateVaultOrExit|saveMergedConfig|printSavedConfig|printObsidianCliStatus|detectBinary)\\b",
+          "message": "Keep reusable CLI support helpers out of `src/cli.ts`; put them in `src/cli-shared.ts` or a narrower application module."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["docs/architecture/cli-layering.md"],
+          "pattern": "Command edge[\\s\\S]*src/cli\\.ts[\\s\\S]*Application support[\\s\\S]*src/cli-shared\\.ts",
+          "message": "Document the CLI layer boundary when introducing or changing the shared CLI support module."
+        }
+      ]
+    },
+    {
       "id": "docs-session-divider-length",
       "severity": "medium",
       "title": "Documented source-prefixed session dividers must use full session ids",
