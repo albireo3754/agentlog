@@ -38,7 +38,7 @@ export const Errors = {
   CLI_NOT_FOUND: (): AgentLogError => ({
     code: "CLI_NOT_FOUND",
     message: "Obsidian CLI not found in PATH",
-    fix: "Enable CLI in Obsidian 1.12+ Settings > General > Command line interface",
+    fix: "Enable CLI in Obsidian 1.12.4+ Settings > General > Command line interface",
   }),
 
   APP_NOT_RESPONDING: (): AgentLogError => ({

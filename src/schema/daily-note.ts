@@ -79,7 +79,7 @@ export function buildProjectHeader(
  *
  * Kept on a separate line so the #### heading remains visually clean.
  * HTML comments are hidden in Obsidian reading view.
- * Session tracking is done via - - - - (ses_XXXXXXXX) divider lines in content.
+ * Session tracking is done via source-prefixed divider lines in content.
  */
 export function buildProjectMetadata(cwd: string): string {
   return `<!-- cwd=${cwd} -->`;

@@ -37,10 +37,10 @@ Claude Code hook / Codex notify → Daily Note append
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
-- - - - [[ses_a1b2c3d4]]
+- - - - [[claude_a1b2c3d4]]
 - 10:53 start building agentlog
 - 11:07 open the spec document
-- - - - [[ses_e5f6a7b8]]
+- - - - [[claude_e5f6a7b8]]
 - 11:21 initialize git and open it in VS Code
 ```
 
@@ -49,7 +49,7 @@ Claude Code hook / Codex notify → Daily Note append
 | `> 🕐 HH:MM — project › prompt` | Latest entry (always updated) |
 | `#### HH:MM · project` | Project subsection (grouped by cwd) |
 | `<!-- cwd=... -->` | Section matching key (hidden in Obsidian Reading view) |
-| `- - - - [[ses_...]]` | Session boundary (Obsidian wiki-link) |
+| `- - - - [[claude_...]]` / `[[codex_...]]` | Session boundary (Obsidian wiki-link) |
 | `- HH:MM prompt` | Individual log entry |
 
 No manual logging. No copy-paste. No AI summarization overhead.
@@ -117,10 +117,10 @@ Use Claude Code or Codex normally. Claude prompts are logged at prompt-submit ti
 
 1. Claude Code fires `UserPromptSubmit`, or Codex invokes `notify` on `agent-turn-complete`
 2. AgentLog extracts the latest user-visible input and sanitizes it
-3. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12+). If that fails, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md`
+3. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12.4+). If that fails, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md`
 4. Finds or creates a `## AgentLog` section
 5. Finds or creates a `#### project` subsection matching the current working directory
-6. Inserts a session divider `[[ses_...]]` if the session changed, then appends the entry
+6. Inserts a source-prefixed session divider such as `[[claude_...]]` or `[[codex_...]]` if the session changed, then appends the entry
 7. Updates the `> 🕐` latest-entry line at the top of the section
 
 Total overhead: < 50ms per prompt. Fire-and-forget, never blocks Claude Code.
@@ -129,9 +129,9 @@ Total overhead: < 50ms per prompt. Fire-and-forget, never blocks Claude Code.
 
 ### Obsidian Mode (default)
 
-AgentLog resolves the Daily Note path via `obsidian daily:path` when the Obsidian CLI is available (1.12+). If the CLI is unavailable or Obsidian is not running, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md` such as `2026-03-01-일.md`.
+AgentLog resolves the Daily Note path via `obsidian daily:path` when the Obsidian CLI is available (1.12.4+). If the CLI is unavailable or Obsidian is not running, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md` such as `2026-03-01-일.md`.
 
-Each working directory gets its own `#### project` subsection. Session changes insert a `[[ses_...]]` wiki-link divider. The `> 🕐` blockquote at the top always shows the latest entry across all projects.
+Each working directory gets its own `#### project` subsection. Session changes insert a source-prefixed wiki-link divider such as `[[claude_...]]` or `[[codex_...]]`. The `> 🕐` blockquote at the top always shows the latest entry across all projects.
 
 ```markdown
 ## AgentLog
@@ -139,13 +139,13 @@ Each working directory gets its own `#### project` subsection. Session changes i
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
-- - - - [[ses_a1b2c3d4]]
+- - - - [[claude_a1b2c3d4]]
 - 10:53 start building agentlog
 - 11:07 open the spec document
 
 #### 14:00 · kotlin/message-gate
 <!-- cwd=/Users/you/work/kotlin/message-gate -->
-- - - - [[ses_e5f6a7b8]]
+- - - - [[codex_e5f6a7b8]]
 - 14:00 adjust the API response
 - 14:30 run tests
 ```
@@ -169,7 +169,7 @@ Current CLI:
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
 | `agentlog codex-debug <prompt>` | Run `codex exec "<prompt>"` with notify auto-registered |
 | `agentlog doctor` | Run health checks for the binary, vault, hook, and Obsidian CLI. Also checks Codex notify status if configured |
-| `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12+) |
+| `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12.4+) |
 | `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
 | `agentlog uninstall [-y] [--codex\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex notify only, `--all`: Remove both |
 | `agentlog hook` | Invoked automatically by Claude Code (not for direct use) |

@@ -1,5 +1,5 @@
 /**
- * Obsidian CLI (1.12+) detection and execution.
+ * Obsidian CLI (1.12.4+) detection and execution.
  * Encapsulates all Obsidian CLI interaction so other modules
  * only need to call these functions.
  */
@@ -103,4 +103,3 @@ export function isVersionAtLeast(version: string, minimum: string): boolean {
   }
   return true; // equal
 }
-
