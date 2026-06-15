@@ -147,9 +147,9 @@ export function appendEntry(
  *   ## AgentLog
  *   > 🕐 HH:MM — project › prompt        ← latest entry (always updated)
  *
- *   #### project · HH:MM <!-- cwd ses --> ← one section per cwd
+ *   #### project · HH:MM                  ← one section per cwd
  *   - HH:MM entry
- *   - - - - (ses_XXXXXXXX)               ← divider when session changes
+ *   - - - - [[claude_XXXXXXXX]]          ← divider when session changes
  *   - HH:MM entry
  */
 function insertIntoAgentLogSection(content: string, entry: LogEntry): string {

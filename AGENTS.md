@@ -106,7 +106,7 @@ agentlog doctor
 
 ### `agentlog open`
 
-Opens today's Daily Note in Obsidian using the Obsidian CLI (`obsidian daily`). Requires Obsidian 1.12+ with CLI enabled and Obsidian app running.
+Opens today's Daily Note in Obsidian using the Obsidian CLI (`obsidian daily`). Requires Obsidian 1.12.4+ with CLI enabled and Obsidian app running.
 
 Example:
 ```
@@ -191,7 +191,7 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 ### Obsidian CLI
 
 - Used to resolve the Daily Note path via `obsidian daily:path`
-- Minimum version: checked by `doctor` (1.12+)
+- Minimum version: checked by `doctor` (1.12.4+)
 - Override binary path: `OBSIDIAN_BIN`
 - Fallback when CLI unavailable: `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
 
@@ -223,10 +223,10 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
-- - - - [[ses_a1b2c3d4]]
+- - - - [[claude_a1b2c3]]
 - 10:53 start building agentlog
 - 11:07 open the spec document
-- - - - [[ses_e5f6a7b8]]
+- - - - [[claude_e5f6a7]]
 - 11:21 initialize git
 ```
 

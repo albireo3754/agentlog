@@ -99,7 +99,7 @@
       "checks": [
         {
           "type": "changedPathRegex",
-          "pattern": "^(CLAUDE\\.md|README\\.md|docs/.*\\.md)$",
+          "pattern": "^(AGENTS\\.md|CLAUDE\\.md|README\\.md|llms\\.txt|docs/.*\\.md)$",
           "message": "Update docs when Daily Note path resolution order changes."
         }
       ]
