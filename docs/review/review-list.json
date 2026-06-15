@@ -107,17 +107,23 @@
     {
       "id": "docs-session-divider-length",
       "severity": "medium",
-      "title": "Documented source-prefixed session dividers must use runtime suffix length",
+      "title": "Documented source-prefixed session dividers must use full session ids",
       "appliesTo": {
-        "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
-        "diffIncludesAny": ["[[claude_", "[[codex_", "session divider"]
+        "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md", "src/schema/daily-note.ts", "src/english-ask.ts"],
+        "diffIncludesAny": ["[[claude_", "[[codex_", "session divider", "buildSessionDivider", "sessionId"]
       },
       "checks": [
         {
           "type": "noneContentRegex",
           "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
-          "pattern": "\\[\\[(?:claude|codex)_[A-Za-z0-9]{6}\\]\\]",
-          "message": "Use 8 session-id characters in source-prefixed divider examples, matching runtime `sessionId.slice(0, 8)`."
+          "pattern": "\\[\\[(?:claude|codex)_[A-Za-z0-9]+\\]\\]",
+          "message": "Use full session ids in source-prefixed divider examples, not truncated examples."
+        },
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/schema/daily-note.ts", "src/english-ask.ts"],
+          "pattern": "sessionId\\.slice\\(0,\\s*8\\)",
+          "message": "New AgentLog/EnglishAsk session links must use the full session id. Keep truncation only for legacy matching code."
         }
       ]
     },

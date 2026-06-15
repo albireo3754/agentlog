@@ -231,10 +231,10 @@ EnglishAsk evaluates English Codex user prompts with `codex exec` after the norm
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
-- - - - [[claude_a1b2c3d4]]
+- - - - [[claude_a1b2c3d4-1111-2222-3333-444455556666]]
 - 10:53 start building agentlog
 - 11:07 open the spec document
-- - - - [[claude_e5f6a7b8]]
+- - - - [[claude_e5f6a7b8-1111-2222-3333-444455556666]]
 - 11:21 initialize git
 ```
 

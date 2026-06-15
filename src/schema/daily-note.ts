@@ -47,10 +47,10 @@ export function buildAgentLogEntry(time: string, prompt: string): string {
 /**
  * Session divider line inserted when session_id changes within a project section.
  * Uses Obsidian wiki-link format so the session ID becomes a navigable link.
- * Format: "- - - - [[claude_XXXXXXXX]]" or "- - - - [[codex_XXXXXXXX]]"
+ * Format: "- - - - [[claude_<session_id>]]" or "- - - - [[codex_<session_id>]]"
  */
 export function buildSessionDivider(sessionId: string, source: SourceType = "claude"): string {
-  return `- - - - [[${source}_${sessionId.slice(0, 8)}]]`;
+  return `- - - - [[${source}_${sessionId}]]`;
 }
 
 /**

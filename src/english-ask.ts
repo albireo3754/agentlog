@@ -172,7 +172,7 @@ export function appendEnglishAskFeedback(
   const block = [
     `### ${entry.time} · ${entry.project}`,
     `<!-- cwd=${entry.cwd} -->`,
-    `- session: [[codex_${entry.sessionId.slice(0, 8)}]]`,
+    `- session: [[codex_${entry.sessionId}]]`,
     `- score: ${scoreText}`,
     `- prompt: ${listItemValue(feedback.prompt)}`,
     `${rewriteHint}`,

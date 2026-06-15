@@ -99,6 +99,21 @@ Check:
 - Old statements like "always uses Obsidian CLI" are removed or qualified.
 - README/CLAUDE/docs are updated only when they are in scope.
 
+### Session Link Fidelity
+
+Session links written to Daily Notes should preserve the full session id unless reading legacy data.
+
+Check:
+
+- New `[[claude_...]]`, `[[codex_...]]`, and EnglishAsk session links use full `sessionId`.
+- Truncation such as `sessionId.slice(0, 8)` remains only in legacy matching compatibility, not in new output builders.
+- Docs examples do not show short 6-8 character source-prefixed session links as the current output.
+
+Good evidence:
+
+- tests for full UUID-like session links in Claude and Codex dividers
+- tests showing legacy short dividers still match the current session without rewriting old notes
+
 ### Evaluator Hooks
 
 Any evaluator launched from a hook or notify path must be fail-soft and non-recursive.
