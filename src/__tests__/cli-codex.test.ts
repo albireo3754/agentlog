@@ -348,7 +348,7 @@ describe("cli codex commands", () => {
     expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("User prompt:\nReply with exactly: OK");
   });
 
-  it("codex-notify sends the raw prompt to EnglishAsk while logging the display prompt", async () => {
+  it("codex-notify evaluates the raw prompt to EnglishAsk while logging a pretty prompt", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     const evaluator = makeFakeEnglishAskEvaluator(tmpHome);
@@ -368,17 +368,11 @@ describe("cli codex commands", () => {
       "utf-8"
     );
 
-    const prompt = [
-      "Please preserve this prompt exactly:",
-      "line one",
-      "line two",
-      "What changed?",
-    ].join("\n");
     const raw = JSON.stringify({
       type: "agent-turn-complete",
-      "thread-id": "thread-englishask-raw",
-      cwd: "/Users/pray/work/js/agentlog",
-      "input-messages": [prompt],
+      "thread-id": "thread-raw-prompt",
+      cwd: "/Users/pray/Obsidian",
+      "input-messages": ["Line one\nLine two\nLine three"],
     });
     const { exitCode, stderr } = await runCli(["codex-notify", raw], {
       HOME: tmpHome,
@@ -386,10 +380,11 @@ describe("cli codex commands", () => {
     });
 
     const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    const evaluatorInput = readFileSync(evaluator.inputPath, "utf-8");
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
-    expect(content).toContain("Please preserve this prompt exactly: (+2 lines) What changed?");
-    expect(readFileSync(evaluator.inputPath, "utf-8")).toContain(`User prompt:\n${prompt}`);
+    expect(content).toContain("Line one (+1 lines) Line three");
+    expect(evaluatorInput).toContain("User prompt:\nLine one\nLine two\nLine three");
   });
 
   it("codex-notify skips guarded evaluator child turns without forwarding", async () => {
