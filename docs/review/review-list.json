@@ -307,6 +307,47 @@
       ]
     },
     {
+      "id": "claude-hook-matcher-string",
+      "severity": "high",
+      "title": "Claude hook matcher must use the string format",
+      "appliesTo": {
+        "paths": ["src/claude-settings.ts", "src/cli.ts", "src/__tests__/cli.test.ts", "README.md", "AGENTS.md", "docs/cc/**/*.md", "docs/review/SELF_REVIEW.md"],
+        "diffIncludesAny": ["HOOK_ENTRY", "matcher", "Claude Code", "UserPromptSubmit", "agentlog hook"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/claude-settings.ts"],
+          "pattern": "HOOK_ENTRY[\\s\\S]*matcher:\\s*\"\"",
+          "message": "Keep AgentLog's Claude hook on the documented string matcher format."
+        },
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/claude-settings.ts"],
+          "pattern": "matcher:\\s*\\{",
+          "message": "Do not register object matchers in Claude Code settings."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/claude-settings.ts"],
+          "pattern": "validateClaudeHookSettings[\\s\\S]*matcher[\\s\\S]*string[\\s\\S]*inspectClaudeHookState[\\s\\S]*validateClaudeHookSettings",
+          "message": "Doctor/validate must inspect matcher type compatibility, not just command presence."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/cli.test.ts"],
+          "pattern": "stale AgentLog hook matcher object[\\s\\S]*matcher must be a string",
+          "message": "Add regression coverage for stale object matcher migration and doctor failure."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["docs/cc/hook-integration.md"],
+          "pattern": "\"matcher\":\\s*\"\"",
+          "message": "Document the Claude hook settings example with an empty string matcher."
+        }
+      ]
+    },
+    {
       "id": "englishask-recursion-guard",
       "severity": "high",
       "title": "EnglishAsk evaluator must not recursively evaluate itself",

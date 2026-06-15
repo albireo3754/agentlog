@@ -20,7 +20,7 @@ import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./con
 import type { AgentLogConfig } from "./types.js";
 import { detectVaults, detectCli } from "./detect.js";
 import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
-import { registerHook, unregisterHook, isHookRegistered, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
+import { registerHook, unregisterHook, inspectClaudeHookState, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
 import {
   ask,
   detectBinary,
@@ -477,14 +477,22 @@ async function cmdDoctor(): Promise<void> {
     codexHookState.kind !== "missing" ||
     legacyNotifyState.kind !== "missing";
 
-  // 6. Hook registered
-  const hookOk = isHookRegistered();
+  // 6. Claude hook registered and compatible with Claude Code matcher validation.
+  const hookState = inspectClaudeHookState();
+  const hookOk = hookState.kind === "registered";
+  const hookDetail = hookState.kind === "registered"
+    ? CLAUDE_SETTINGS_PATH
+    : hookState.kind === "unsupported"
+      ? `${CLAUDE_SETTINGS_PATH} — ${hookState.reason}`
+      : "not registered";
   check(
     "hook",
     hookOk,
-    hookOk ? CLAUDE_SETTINGS_PATH : "not registered",
-    "run: agentlog init  to re-register",
-    codexRelevant
+    hookDetail,
+    hookState.kind === "unsupported"
+      ? "run: agentlog init to migrate AgentLog hook, or fix Claude settings"
+      : "run: agentlog init to re-register",
+    codexRelevant && hookState.kind === "missing"
   );
 
   // 7. Codex hook checks (only when configured or explicitly requested)
@@ -671,11 +679,12 @@ async function cmdValidate(): Promise<void> {
   }
 
   // 2. Hook check
-  const hookOk = isHookRegistered();
-  if (hookOk) {
+  const hookState = inspectClaudeHookState();
+  if (hookState.kind === "registered") {
     console.log(`hook: ok — ${CLAUDE_SETTINGS_PATH}`);
   } else {
-    console.log("hook: fail — not registered");
+    const detail = hookState.kind === "unsupported" ? hookState.reason : "not registered";
+    console.log(`hook: fail — ${detail}`);
     allOk = false;
   }
 

@@ -93,7 +93,7 @@ Checks performed (in order):
 | `cli-ver` | CLI version meets minimum | warn |
 | `cli-app` | Obsidian app responds to CLI | warn |
 | `daily` | Today's Daily Note exists | warn |
-| `hook` | Hook registered in `~/.claude/settings.json` | error (warn if Codex-only) |
+| `hook` | Hook registered in `~/.claude/settings.json` and using a Claude-compatible string matcher | error (warn if Codex-only and missing) |
 | `codex-bin` | `codex` binary in PATH (if Codex configured) | error |
 | `codex` | Codex hook registered in `~/.codex/hooks.json` (if configured) | error |
 

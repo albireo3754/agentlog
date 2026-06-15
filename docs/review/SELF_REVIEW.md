@@ -89,6 +89,25 @@ Good evidence:
 - tests for legacy notify removal when no restore command exists
 - docs that mention legacy `notify` cleanup for Codex uninstall
 
+### Claude Hook Matcher Compatibility
+
+Claude Code validates hook entries in `~/.claude/settings.json`. The `matcher` field must stay a string; stale object matchers can make the whole settings file invalid.
+
+Check:
+
+- AgentLog's `HOOK_ENTRY` uses `matcher: ""`, not an object matcher.
+- `agentlog init` removes AgentLog-owned stale hook entries before writing the canonical hook.
+- `agentlog doctor` and `agentlog validate` fail when the registered AgentLog hook has an unsupported matcher shape.
+- The migration preserves unrelated hook entries.
+- Docs that show the Claude hook settings example use the string matcher format.
+
+Good evidence:
+
+- a validator such as `inspectClaudeHookState()` reports unsupported Claude settings shapes
+- tests for stale AgentLog object matcher migration
+- tests for doctor failure when `matcher` is an object
+- hook integration docs showing `"matcher": ""`
+
 ### Docs Sync
 
 When runtime fallback order or behavior changes, developer docs must say the same thing.
