@@ -104,7 +104,7 @@ function printObsidianCliStatus(plain: boolean): void {
     console.log(`  Daily notes will be written via CLI when Obsidian is running.`);
   } else {
     console.log(`  Obsidian CLI: not detected (using direct file write)`);
-    console.log(`  For better integration, enable CLI in Obsidian 1.12+ Settings.`);
+    console.log(`  For better integration, enable CLI in Obsidian ${MIN_CLI_VERSION}+ Settings.`);
   }
 }
 
@@ -400,7 +400,7 @@ async function cmdDetect(opts: { format: string; fields?: string }): Promise<voi
     console.log(`Obsidian CLI: ${cli.binPath} (${cli.version ?? "version unknown"})`);
   } else {
     console.log("Obsidian CLI: not detected");
-    console.log("  Enable in Obsidian 1.12+ Settings > General > Command line interface");
+    console.log(`  Enable in Obsidian ${MIN_CLI_VERSION}+ Settings > General > Command line interface`);
   }
 }
 
