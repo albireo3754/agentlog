@@ -163,7 +163,7 @@
         {
           "type": "noneContentRegex",
           "paths": ["src/cli.ts"],
-          "pattern": "function\\s+(?:validateVault|validateVaultOrExit|saveMergedConfig|printSavedConfig|printObsidianCliStatus|detectBinary)\\b",
+          "pattern": "(?:function\\s+|(?:export\\s+)?const\\s+)(?:validateVault|validateVaultOrExit|saveMergedConfig|printSavedConfig|printObsidianCliStatus|detectBinary)\\b",
           "message": "Keep reusable CLI support helpers out of `src/cli.ts`; put them in `src/cli-shared.ts` or a narrower application module."
         },
         {

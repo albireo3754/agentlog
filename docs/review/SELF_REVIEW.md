@@ -127,7 +127,7 @@ Good evidence:
 Check:
 
 - Commander registration stays in `src/cli.ts`.
-- Shared support such as prompt asking, vault validation, config merge, binary lookup, and repeated status formatting stays outside `src/cli.ts`.
+- Shared support such as prompt asking, vault validation, config merge, binary lookup, and repeated status formatting stays outside `src/cli.ts`, regardless of whether it would be written as `function`, `const`, or `export const`.
 - External integrations remain behind adapter modules such as `claude-settings`, `codex-hooks`, `codex-settings`, and `obsidian-cli`.
 - Architecture docs are updated when a new CLI layer or module boundary is introduced.
 
