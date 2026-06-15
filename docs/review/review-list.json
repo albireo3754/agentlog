@@ -116,7 +116,7 @@
         {
           "type": "noneContentRegex",
           "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
-          "pattern": "\\[\\[(?:claude|codex)_[A-Za-z0-9]{6,8}\\]\\]",
+          "pattern": "\\[\\[(?:claude|codex)_[A-Za-z0-9]{6,}\\]\\]",
           "message": "Use full session ids in source-prefixed divider examples, not truncated examples."
         },
         {
