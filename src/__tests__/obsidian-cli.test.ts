@@ -1,7 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, cliDailyPath } from "../obsidian-cli.js";
-import { writeFileSync, mkdirSync, chmodSync, rmSync } from "fs";
+import {
+  CLI_PROBE_TIMEOUT_MS,
+  DAILY_BOOTSTRAP_TIMEOUT_MS,
+  isVersionAtLeast,
+  MIN_CLI_VERSION,
+  resolveCliBin,
+  cliDailyPath,
+  cliEnsureDailyNoteExists,
+} from "../obsidian-cli.js";
+import { writeFileSync, readFileSync, mkdirSync, chmodSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
@@ -48,6 +56,12 @@ describe("isVersionAtLeast", () => {
 describe("MIN_CLI_VERSION", () => {
   it("is set to 1.12.4", () => {
     expect(MIN_CLI_VERSION).toBe("1.12.4");
+  });
+});
+
+describe("Obsidian CLI timeouts", () => {
+  it("gives Daily bootstrap more time than lightweight probes", () => {
+    expect(DAILY_BOOTSTRAP_TIMEOUT_MS).toBeGreaterThan(CLI_PROBE_TIMEOUT_MS);
   });
 });
 
@@ -151,5 +165,49 @@ describe("cliDailyPath", () => {
 
     process.env.OBSIDIAN_BIN = mockBin;
     expect(cliDailyPath()).toBeNull();
+  });
+});
+
+describe("cliEnsureDailyNoteExists", () => {
+  const originalBin = process.env.OBSIDIAN_BIN;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = join(tmpdir(), `agentlog-cli-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(tmpDir, { recursive: true });
+  });
+
+  afterEach(() => {
+    if (originalBin === undefined) {
+      delete process.env.OBSIDIAN_BIN;
+    } else {
+      process.env.OBSIDIAN_BIN = originalBin;
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("returns true when obsidian daily exits 0", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-daily");
+    const called = join(tmpDir, "called");
+    writeFileSync(mockBin, `#!/bin/bash\necho "$1" > ${JSON.stringify(called)}\nexit 0`, "utf-8");
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliEnsureDailyNoteExists()).toBe(true);
+    expect(readFileSync(called, "utf-8")).toBe("daily\n");
+  });
+
+  it("returns false when obsidian daily exits non-zero", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-daily-fail");
+    writeFileSync(mockBin, "#!/bin/bash\nexit 1", "utf-8");
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliEnsureDailyNoteExists()).toBe(false);
+  });
+
+  it("returns false when CLI binary is not found", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    expect(cliEnsureDailyNoteExists()).toBe(false);
   });
 });

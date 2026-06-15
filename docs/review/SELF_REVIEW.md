@@ -99,6 +99,27 @@ Check:
 - Old statements like "always uses Obsidian CLI" are removed or qualified.
 - README/CLAUDE/docs are updated only when they are in scope.
 
+### Daily Bootstrap Safety
+
+`obsidian daily:path` resolves a path; it does not create the Daily Note or apply the user's template.
+
+Check:
+
+- Missing Daily Notes in Obsidian mode are created through `obsidian daily` before AgentLog writes.
+- AgentLog re-checks that the resolved file exists after CLI bootstrap before reading or writing.
+- The `obsidian daily` bootstrap path has a longer timeout than lightweight probes such as `daily:path`, because it may start or wake Obsidian.
+- Non-plain mode does not create a guessed `{vault}/Daily/...` fallback when no safe path source is available.
+- Plain mode remains direct-file append and is not accidentally routed through Obsidian CLI.
+- Tests prove template content created by the bootstrap is preserved after AgentLog merges `## AgentLog`.
+- Tests prove CLI-unavailable/bootstrap-failure cases do not create raw Daily files.
+
+Good evidence:
+
+- `cliEnsureDailyNoteExists()` calls `obsidian daily`.
+- tests or constants prove Daily bootstrap timeout is greater than the probe timeout.
+- `appendEntry()` aborts missing-note writes when path resolution or CLI bootstrap cannot be confirmed.
+- Regression tests for missing-note bootstrap, no guessed fallback, and bootstrap failure.
+
 ### Session Link Fidelity
 
 Session links written to Daily Notes should preserve the full session id unless reading legacy data.

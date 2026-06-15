@@ -87,6 +87,9 @@ OS별 포인트(문서 기준):
 ### 5.1 현재 구조와의 관계
 
 - AgentLog 핵심(`agentlog hook`)은 이미 파일 직접 쓰기라 REST API 의존이 없다.
+- Daily Note 경로는 `.obsidian/daily-notes.json`을 먼저 읽고, 설정을 해석할 수 없을 때 `obsidian daily:path`로 보완한다.
+- Missing Daily Note 생성은 `obsidian daily`가 담당한다. `daily:path`는 경로 조회일 뿐이며 템플릿 적용 생성 흐름을 보장하지 않는다.
+- AgentLog의 markdown merge는 파일이 존재한 뒤에만 수행한다. Obsidian mode에서는 안전 경로/CLI bootstrap이 없을 때 guessed `{vault}/Daily/...` 파일을 직접 만들지 않는다.
 - 영향 범위는 주로 문서/운영 자동화 레이어(`obs`, `obs-daily`, `obs-cmd`, `obs-open`류)다.
 
 ### 5.2 권장 전략
@@ -110,7 +113,7 @@ OS별 포인트(문서 기준):
 | 특정 명령 실행 | `obsidian command id="..."` |
 | 명령 목록 조회 | `obsidian commands` |
 | vault 검색 | `obsidian search query="..."` |
-| Daily 경로 확인 | `obsidian daily:path` |
+| Daily 경로 확인(생성 아님) | `obsidian daily:path` |
 
 > 참고: 실제 명령/파라미터는 1.12.x에서 빠르게 변경된 이력이 있으니, 도입 시점에 `obsidian help`로 재검증 필요.
 
@@ -175,4 +178,3 @@ OS별 포인트(문서 기준):
     https://raw.githubusercontent.com/coddingtonbear/obsidian-local-rest-api/main/manifest.json
 14. Local REST API README (HTTPS+API key 모델)  
     https://raw.githubusercontent.com/coddingtonbear/obsidian-local-rest-api/main/README.md
-

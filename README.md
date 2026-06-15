@@ -117,19 +117,20 @@ Use Claude Code or Codex normally. Claude and Codex prompts are logged from thei
 
 1. Claude Code or Codex fires the `UserPromptSubmit` hook
 2. AgentLog extracts the latest user-visible input and sanitizes it
-3. Finds your Daily Note via `obsidian daily:path` (Obsidian CLI 1.12.4+). If that fails, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md`
-4. Finds or creates a `## AgentLog` section
-5. Finds or creates a `#### project` subsection matching the current working directory
-6. Inserts a source-prefixed session divider such as `[[claude_...]]` or `[[codex_...]]` if the session changed, then appends the entry
-7. Updates the `> 🕐` latest-entry line at the top of the section
+3. Resolves your Daily Note path from `.obsidian/daily-notes.json`, then `obsidian daily:path` when needed
+4. If the Daily Note is missing in Obsidian mode, asks `obsidian daily` to create it before writing so your Daily Notes template is preserved
+5. Finds or creates a `## AgentLog` section
+6. Finds or creates a `#### project` subsection matching the current working directory
+7. Inserts a source-prefixed session divider such as `[[claude_...]]` or `[[codex_...]]` if the session changed, then appends the entry
+8. Updates the `> 🕐` latest-entry line at the top of the section
 
-Total overhead: < 50ms per prompt. Fire-and-forget, never blocks Claude Code.
+Steady-state overhead is under 50ms per prompt when the Daily Note already exists. Missing-note bootstrap depends on Obsidian CLI startup. Fire-and-forget, never blocks Claude Code.
 
 ## Daily Note Format
 
 ### Obsidian Mode (default)
 
-AgentLog resolves the Daily Note path via `obsidian daily:path` when the Obsidian CLI is available (1.12.4+). If the CLI is unavailable or Obsidian is not running, it falls back to `{vault}/Daily/YYYY-MM-DD-<Korean weekday>.md` such as `2026-03-01-일.md`.
+AgentLog resolves the Daily Note path from `.obsidian/daily-notes.json` first, then `obsidian daily:path` when the vault settings are unavailable or unsupported. If the resolved Daily Note is missing, AgentLog runs `obsidian daily` before writing and only appends after the file exists, preserving the user's Daily Notes template. Obsidian mode does not create a guessed `{vault}/Daily/...` fallback file; if no safe path can be resolved or the CLI cannot bootstrap a missing note, the hook fails softly and skips the write. Plain mode still writes directly to `{dir}/YYYY-MM-DD.md`.
 
 Each working directory gets its own `#### project` subsection. Session changes insert a source-prefixed wiki-link divider such as `[[claude_...]]` or `[[codex_...]]`. The `> 🕐` blockquote at the top always shows the latest entry across all projects.
 

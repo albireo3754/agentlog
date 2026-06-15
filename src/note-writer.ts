@@ -10,7 +10,7 @@ import {
   buildProjectHeader,
   buildProjectMetadata,
 } from "./schema/daily-note.js";
-import { cliDailyPath } from "./obsidian-cli.js";
+import { cliDailyPath, cliEnsureDailyNoteExists } from "./obsidian-cli.js";
 
 type DailyNotesConfig = {
   folder?: string;
@@ -87,8 +87,8 @@ function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** Returns daily note file path for a given date. */
-export function dailyNotePath(config: AgentLogConfig, date: Date): string {
+/** Returns daily note file path for a given date, or null when non-plain mode has no safe path source. */
+export function dailyNotePath(config: AgentLogConfig, date: Date): string | null {
   if (config.plain) {
     const yyyy = date.getFullYear();
     const mm = pad2(date.getMonth() + 1);
@@ -105,8 +105,7 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string {
   const cliPath = relativePath ? safeVaultJoin(config.vault, relativePath) : null;
   if (cliPath) return cliPath;
 
-  // Fallback: hardcoded {vault}/Daily/
-  return join(config.vault, "Daily", dailyNoteFileName(date));
+  return null;
 }
 
 /**
@@ -124,6 +123,9 @@ export function appendEntry(
   date: Date = new Date()
 ): WriteResult {
   const filePath = dailyNotePath(config, date);
+  if (!filePath) {
+    throw new Error("Daily Note path could not be resolved. Enable the Obsidian CLI or configure Daily Notes settings.");
+  }
 
   if (config.plain) {
     return appendPlain(filePath, entry, date);
@@ -131,10 +133,15 @@ export function appendEntry(
 
   const created = !existsSync(filePath);
   if (created) {
-    mkdirSync(dirname(filePath), { recursive: true });
+    if (!cliEnsureDailyNoteExists()) {
+      throw new Error("Daily Note is missing and Obsidian CLI could not create it.");
+    }
+    if (!existsSync(filePath)) {
+      throw new Error("Daily Note is missing after Obsidian CLI bootstrap.");
+    }
   }
 
-  const content = created ? "" : readFileSync(filePath, "utf-8");
+  const content = readFileSync(filePath, "utf-8");
   const newContent = insertIntoAgentLogSection(content, entry);
   writeFileSync(filePath, newContent, "utf-8");
   return { filePath, created, section: "agentlog" };

@@ -112,12 +112,14 @@ Plain mode appends to `{folder}/YYYY-MM-DD.md`:
 ```
 
 Daily Note path resolution order:
-1. `obsidian daily:path` (Obsidian CLI 1.12.4+, app must be running)
-2. Fallback: `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
+1. `.obsidian/daily-notes.json` when it contains a supported in-vault folder/format
+2. `obsidian daily:path` (Obsidian CLI 1.12.4+, app must be running)
+
+In Obsidian mode, missing Daily Notes are bootstrapped with `obsidian daily` before AgentLog writes so user templates are preserved. AgentLog does not create a guessed `{vault}/Daily/...` fallback file when no safe path or bootstrap is available. Plain mode still writes directly to `{dir}/YYYY-MM-DD.md`.
 
 ## How the Hook Works
 
-Claude Code fires `UserPromptSubmit` with JSON on stdin containing `prompt`, `session_id`, and `cwd`. AgentLog sanitizes the prompt, resolves the Daily Note path, and appends the entry. Fails silently — never interrupts Claude Code. Total overhead: under 50ms per prompt.
+Claude Code fires `UserPromptSubmit` with JSON on stdin containing `prompt`, `session_id`, and `cwd`. AgentLog sanitizes the prompt, resolves the Daily Note path, and appends the entry. Fails silently — never interrupts Claude Code. Steady-state overhead is under 50ms when the Daily Note already exists; missing-note bootstrap depends on Obsidian CLI startup.
 
 Codex fires `agent-turn-complete` notify. Entries are logged when the turn completes (not at prompt submission time).
 
