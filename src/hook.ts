@@ -60,6 +60,7 @@ async function main(): Promise<void> {
     sessionId: parsed.sessionId,
     project: cwdToProject(parsed.cwd),
     cwd: parsed.cwd,
+    source: "claude" as const,
   };
 
   try {

@@ -1,7 +1,8 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, resolve, relative, isAbsolute, sep } from "path";
 import type { AgentLogConfig, LogEntry, WriteResult } from "./types.js";
 import {
+  KO_DAYS,
   dailyNoteFileName,
   buildAgentLogEntry,
   buildSessionDivider,
@@ -10,6 +11,76 @@ import {
   buildProjectMetadata,
 } from "./schema/daily-note.js";
 import { cliDailyPath } from "./obsidian-cli.js";
+
+type DailyNotesConfig = {
+  folder?: string;
+  format?: string;
+};
+
+const FORMAT_TOKEN_RE = /YYYY|YY|MM|M|DD|D|dddd|ddd|dd|d/g;
+const FORMAT_ALPHA_RE = /[A-Za-z]+/g;
+const SUPPORTED_FORMAT_TOKENS = new Set([
+  "YYYY",
+  "YY",
+  "MM",
+  "M",
+  "DD",
+  "D",
+  "dddd",
+  "ddd",
+  "dd",
+  "d",
+]);
+
+function formatDailyNoteFileName(date: Date, format: string): string | null {
+  const baseFormat = format.endsWith(".md") ? format.slice(0, -3) : format;
+  const alphaTokens = baseFormat.match(FORMAT_ALPHA_RE) ?? [];
+  if (alphaTokens.some((token) => !SUPPORTED_FORMAT_TOKENS.has(token))) return null;
+  const dayShort = KO_DAYS[date.getDay()];
+  const replacements: Record<string, string> = {
+    YYYY: String(date.getFullYear()),
+    YY: String(date.getFullYear()).slice(-2),
+    MM: pad2(date.getMonth() + 1),
+    M: String(date.getMonth() + 1),
+    DD: pad2(date.getDate()),
+    D: String(date.getDate()),
+    ddd: dayShort,
+    dddd: `${dayShort}요일`,
+    dd: dayShort,
+    d: String(date.getDay()),
+  };
+  const replaced = baseFormat.replace(FORMAT_TOKEN_RE, (token) => replacements[token] ?? token);
+  return `${replaced}.md`;
+}
+
+function safeVaultJoin(vault: string, ...segments: string[]): string | null {
+  const root = resolve(vault);
+  const target = resolve(root, ...segments);
+  const rel = relative(root, target);
+  if (rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))) return target;
+  return null;
+}
+
+/**
+ * Read Daily Notes path from .obsidian/daily-notes.json.
+ * Avoids spawning the Obsidian CLI binary, which causes renderer reloads.
+ */
+function vaultDailyPath(vault: string, date: Date): string | null {
+  const cfgPath = join(vault, ".obsidian", "daily-notes.json");
+  if (!existsSync(cfgPath)) return null;
+  try {
+    const raw = readFileSync(cfgPath, "utf-8");
+    const cfg = JSON.parse(raw) as DailyNotesConfig;
+    const folder = typeof cfg.folder === "string" ? cfg.folder.trim() : "Daily";
+    const fileName = cfg.format?.trim()
+      ? formatDailyNoteFileName(date, cfg.format.trim())
+      : dailyNoteFileName(date);
+    if (!fileName) return null;
+    return safeVaultJoin(vault, folder, fileName);
+  } catch {
+    return null;
+  }
+}
 
 /** Zero-pads a number to 2 digits. */
 function pad2(n: number): string {
@@ -25,9 +96,14 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string {
     return join(config.vault, `${yyyy}-${mm}-${dd}.md`);
   }
 
-  // Try Obsidian CLI first (respects user's Daily Notes folder setting)
+  // Try .obsidian/daily-notes.json first (no CLI spawn, no renderer reload)
+  const vaultPath = vaultDailyPath(config.vault, date);
+  if (vaultPath) return vaultPath;
+
+  // Try Obsidian CLI (respects user's Daily Notes folder setting)
   const relativePath = cliDailyPath();
-  if (relativePath) return join(config.vault, relativePath);
+  const cliPath = relativePath ? safeVaultJoin(config.vault, relativePath) : null;
+  if (cliPath) return cliPath;
 
   // Fallback: hardcoded {vault}/Daily/
   return join(config.vault, "Daily", dailyNoteFileName(date));
@@ -71,9 +147,9 @@ export function appendEntry(
  *   ## AgentLog
  *   > 🕐 HH:MM — project › prompt        ← latest entry (always updated)
  *
- *   #### project · HH:MM <!-- cwd ses --> ← one section per cwd
+ *   #### project · HH:MM                  ← one section per cwd
  *   - HH:MM entry
- *   - - - - (ses_XXXXXXXX)               ← divider when session changes
+ *   - - - - [[claude_XXXXXXXX]]          ← divider when session changes
  *   - HH:MM entry
  */
 function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
@@ -119,8 +195,8 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
   const metaRe = /^<!-- cwd=(.+?) -->$/;
   const legacyMetaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
   const legacyHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=([\w-]+) -->$/;
-  // Match both new [[ses_...]] and legacy (ses_...) formats for backward compat
-  const dividerRe = /^- - - - (?:\[\[ses_([\w-]+)\]\]|\(ses_([\w-]+)\))$/;
+  // Match current [[claude_...]]/[[codex_...]] and legacy [[ses_...]]/(ses_...) dividers
+  const dividerRe = /^- - - - (?:\[\[(?:claude|codex|ses)_([\w-]+)\]\]|\(ses_([\w-]+)\))$/;
 
   let projectIdx = -1;
   let projectMetaIdx = -1; // -1 means legacy inline format (no separate metadata line)
@@ -180,7 +256,7 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
     if (prevLine !== "" && prevLine !== "## AgentLog") {
       newSection.push("");
     }
-    newSection.push(header, meta, buildSessionDivider(entry.sessionId), entryLine);
+    newSection.push(header, meta, buildSessionDivider(entry.sessionId, entry.source), entryLine);
     lines.splice(agentLogEnd, 0, ...newSection);
   } else {
     // Existing project: find end of this subsection
@@ -203,13 +279,13 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
     let currentSes = "";
     for (let i = firstContentIdx; i < subsectionEnd; i++) {
       const m = lines[i].match(dividerRe);
-      if (m) currentSes = m[1] ?? m[2]; // group 1: new [[ses_...]], group 2: legacy (ses_...)
+      if (m) currentSes = m[1] ?? m[2];
     }
     if (!currentSes) currentSes = legacySes;
 
     if (currentSes !== sessionShort) {
       // Session changed: insert divider + entry.
-      lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId), entryLine);
+      lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId, entry.source), entryLine);
       // Migrate legacy metadata format to new format (remove ses=).
       if (projectMetaIdx !== -1 && lines[projectMetaIdx].match(legacyMetaRe)) {
         lines[projectMetaIdx] = buildProjectMetadata(entry.cwd);

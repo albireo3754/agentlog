@@ -40,6 +40,10 @@ describe("prettyPrompt", () => {
     expect(prettyPrompt("[AUTOPILOT] iteration 3")).toBeNull();
     expect(prettyPrompt("[RALPH LOOP] continuing")).toBeNull();
     expect(prettyPrompt("[MAGIC KEYWORD: ultrawork]")).toBeNull();
+    expect(prettyPrompt("App is up to date.")).toBeNull();
+    expect(prettyPrompt("2026-03-24 04:27:38 App is up to date.")).toBeNull();
+    expect(prettyPrompt("Your Obsidian installer is out of date.")).toBeNull();
+    expect(prettyPrompt("2026-03-24 04:27:38 Your Obsidian installer is out of date.")).toBeNull();
   });
 
   // --- EXTRACT from AgentLog feedback ---

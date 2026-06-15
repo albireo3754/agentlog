@@ -22,6 +22,7 @@ function makeEntry(overrides: Partial<LogEntry> = {}): LogEntry {
     sessionId: "abc12345-def6-7890-abcd-ef1234567890",
     project: "js/agentlog",
     cwd: "/Users/pray/work/js/agentlog",
+    source: "claude",
     ...overrides,
   };
 }
@@ -79,6 +80,164 @@ describe("dailyNotePath", () => {
     rmSync(mockBin, { force: true });
   });
 
+  it("uses Daily Notes folder config without invoking CLI", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    const sentinel = join(vault, "cli-called");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(join(vault, ".obsidian", "daily-notes.json"), JSON.stringify({ folder: "Notes/Daily" }), "utf-8");
+    writeFileSync(mockBin, `#!/bin/bash\ntouch ${JSON.stringify(sentinel)}\necho "Cli/should-not-run.md"`, "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Notes/Daily/2026-03-01-일.md"));
+    expect(existsSync(sentinel)).toBe(false);
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("uses supported Daily Notes format config without invoking CLI", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    const sentinel = join(vault, "cli-called");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY/MM/YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+    writeFileSync(mockBin, `#!/bin/bash\ntouch ${JSON.stringify(sentinel)}\necho "Cli/should-not-run.md"`, "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Notes/2026/03/2026-03-01-일.md"));
+    expect(existsSync(sentinel)).toBe(false);
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("uses vault root when Daily Notes folder config is empty", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "", format: "YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("accepts a supported Daily Notes format that already includes .md", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY-MM-DD-ddd.md" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Notes/2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("falls back to CLI when Daily Notes format config is unsupported", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY-[week]WW" }),
+      "utf-8",
+    );
+    writeFileSync(mockBin, '#!/bin/bash\necho "Cli/2026-W09.md"', "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Cli/2026-W09.md"));
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("falls back to CLI when Daily Notes format uses unsupported named tokens", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY-MMMM-DD" }),
+      "utf-8",
+    );
+    writeFileSync(mockBin, '#!/bin/bash\necho "Cli/2026-March-01.md"', "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Cli/2026-March-01.md"));
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("allows in-vault Daily Notes folders that begin with dot-dot characters", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "..daily", format: "YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "..daily/2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("does not allow Daily Notes config paths outside the vault", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "../outside", format: "YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Daily/2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("does not allow CLI paths outside the vault", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    writeFileSync(mockBin, '#!/bin/bash\necho "../outside.md"', "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Daily/2026-03-01-일.md"));
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
   it("falls back to hardcoded path when CLI fails", () => {
     process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
 
@@ -125,7 +284,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
     expect(content).toContain("#### 10:53 · js/agentlog");
     expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog -->");
-    expect(content).toContain("- - - - [[ses_abc12345]]");
+    expect(content).toContain("- - - - [[claude_abc12345]]");
     expect(content).toContain("- 10:53 테스트 작업");
   });
 
@@ -194,10 +353,26 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     appendEntry(config, entry2, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("- - - - [[ses_session1]]");
-    expect(content).toContain("- - - - [[ses_session2]]");
+    expect(content).toContain("- - - - [[claude_session1]]");
+    expect(content).toContain("- - - - [[claude_session2]]");
     expect(content).toContain("- 10:53 테스트 작업");
     expect(content).toContain("- 15:00 테스트 작업");
+  });
+
+  // N5b: codex source emits [[codex_...]] dividers
+  it("emits codex-prefixed divider when source is codex", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+
+    const entry1 = makeEntry({ time: "10:53", source: "codex", sessionId: "codex111-aaaa-bbbb-cccc-dddddddddddd" });
+    const entry2 = makeEntry({ time: "15:00", source: "codex", sessionId: "codex222-xxxx-yyyy-zzzz-111111111111" });
+    appendEntry(config, entry1, TEST_DATE);
+    appendEntry(config, entry2, TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("- - - - [[codex_codex111]]");
+    expect(content).toContain("- - - - [[codex_codex222]]");
+    expect(content).not.toContain("claude_");
   });
 
   // N6: different projects → separate #### sections

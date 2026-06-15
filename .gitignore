@@ -9,3 +9,4 @@ dist/
 .omc/handoffs
 .omx/
 *.tsbuildinfo
+docs/review/history.jsonl

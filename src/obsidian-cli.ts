@@ -1,5 +1,5 @@
 /**
- * Obsidian CLI (1.12+) detection and execution.
+ * Obsidian CLI (1.12.4+) detection and execution.
  * Encapsulates all Obsidian CLI interaction so other modules
  * only need to call these functions.
  */
@@ -72,6 +72,9 @@ export function cliDailyPath(): string | null {
   // version warnings). The actual path is always the last non-empty line.
   const lines = result.stdout.trim().split("\n").filter(Boolean);
   const path = (lines.at(-1) ?? "").trim();
+  // Validate it looks like a real path — guards against Electron noise like
+  // "2026-03-24 04:27:38 App is up to date." being used as a filename.
+  if (!path.endsWith(".md")) return null;
   return path || null;
 }
 
@@ -100,4 +103,3 @@ export function isVersionAtLeast(version: string, minimum: string): boolean {
   }
   return true; // equal
 }
-

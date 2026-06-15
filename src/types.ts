@@ -7,6 +7,9 @@ export interface AgentLogConfig {
   codexNotifyRestore?: string[] | null;
 }
 
+/** Source of the log entry — which AI tool produced it */
+export type SourceType = "claude" | "codex";
+
 /** A single log entry to be written into a Daily Note */
 export interface LogEntry {
   time: string;     // "HH:MM"
@@ -14,6 +17,7 @@ export interface LogEntry {
   sessionId: string; // from hook session_id
   project: string;  // derived from cwd: parent/basename
   cwd: string;      // full cwd path, used as section matching key
+  source: SourceType;
 }
 
 /** Result of writing a log entry */
