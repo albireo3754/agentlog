@@ -348,6 +348,50 @@ describe("cli codex commands", () => {
     expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("User prompt:\nReply with exactly: OK");
   });
 
+  it("codex-notify sends the raw prompt to EnglishAsk while logging the display prompt", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const evaluator = makeFakeEnglishAskEvaluator(tmpHome);
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        englishAsk: {
+          enabled: true,
+          mode: "log-only",
+          evaluatorCommand: evaluator.command,
+        },
+      }),
+      "utf-8"
+    );
+
+    const prompt = [
+      "Please preserve this prompt exactly:",
+      "line one",
+      "line two",
+      "What changed?",
+    ].join("\n");
+    const raw = JSON.stringify({
+      type: "agent-turn-complete",
+      "thread-id": "thread-englishask-raw",
+      cwd: "/Users/pray/work/js/agentlog",
+      "input-messages": [prompt],
+    });
+    const { exitCode, stderr } = await runCli(["codex-notify", raw], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(content).toContain("Please preserve this prompt exactly: (+2 lines) What changed?");
+    expect(readFileSync(evaluator.inputPath, "utf-8")).toContain(`User prompt:\n${prompt}`);
+  });
+
   it("codex-notify skips guarded evaluator child turns without forwarding", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");

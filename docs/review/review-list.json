@@ -196,6 +196,29 @@
       ]
     },
     {
+      "id": "englishask-raw-evaluator-input",
+      "severity": "medium",
+      "title": "EnglishAsk evaluator must receive the raw prompt, not display formatting",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator", "prettyPrompt"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/codex-notify.ts"],
+          "pattern": "const\\s+prompt\\s*=\\s*prettyPrompt\\([^)]*\\)[\\s\\S]*evaluateEnglishAsk\\(config,\\s*prompt\\s*,",
+          "message": "Pass the raw parsed prompt to EnglishAsk; reserve `prettyPrompt(...)` for Daily Note display."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "raw prompt to EnglishAsk|logging the display prompt|User prompt:\\\\n\\$\\{prompt\\}",
+          "message": "Add a regression test proving the evaluator receives raw multi-line prompt text while the note logs the display prompt."
+        }
+      ]
+    },
+    {
       "id": "englishask-cwd-fallback",
       "severity": "medium",
       "title": "EnglishAsk evaluator must tolerate unavailable notify cwd",
