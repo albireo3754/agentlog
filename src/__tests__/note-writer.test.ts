@@ -80,6 +80,54 @@ describe("dailyNotePath", () => {
     rmSync(mockBin, { force: true });
   });
 
+  it("uses Daily Notes folder config without invoking CLI", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(join(vault, ".obsidian", "daily-notes.json"), JSON.stringify({ folder: "Notes/Daily" }), "utf-8");
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Notes/Daily/2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("uses supported Daily Notes format config without invoking CLI", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY/MM/YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Notes/2026/03/2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("falls back to CLI when Daily Notes format config is unsupported", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY-[week]WW" }),
+      "utf-8",
+    );
+    writeFileSync(mockBin, '#!/bin/bash\necho "Cli/2026-W09.md"', "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Cli/2026-W09.md"));
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
   it("falls back to hardcoded path when CLI fails", () => {
     process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
 

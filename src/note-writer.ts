@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import type { AgentLogConfig, LogEntry, WriteResult } from "./types.js";
 import {
+  KO_DAYS,
   dailyNoteFileName,
   buildAgentLogEntry,
   buildSessionDivider,
@@ -10,6 +11,54 @@ import {
   buildProjectMetadata,
 } from "./schema/daily-note.js";
 import { cliDailyPath } from "./obsidian-cli.js";
+
+type DailyNotesConfig = {
+  folder?: string;
+  format?: string;
+};
+
+const FORMAT_TOKEN_RE = /YYYY|YY|MMMM|MMM|MM|M|DDDD|DDD|DD|D|dddd|ddd|dd|d/g;
+const FORMAT_ALPHA_RE = /[A-Za-z]+/g;
+
+function formatDailyNoteFileName(date: Date, format: string): string | null {
+  const dayShort = KO_DAYS[date.getDay()];
+  const replacements: Record<string, string> = {
+    YYYY: String(date.getFullYear()),
+    YY: String(date.getFullYear()).slice(-2),
+    MM: pad2(date.getMonth() + 1),
+    M: String(date.getMonth() + 1),
+    DD: pad2(date.getDate()),
+    D: String(date.getDate()),
+    ddd: dayShort,
+    dddd: `${dayShort}요일`,
+    dd: dayShort,
+    d: String(date.getDay()),
+  };
+  const replaced = format.replace(FORMAT_TOKEN_RE, (token) => replacements[token] ?? token);
+  if ((replaced.match(FORMAT_ALPHA_RE) ?? []).some((token) => !token.includes("요"))) return null;
+  return replaced.endsWith(".md") ? replaced : `${replaced}.md`;
+}
+
+/**
+ * Read Daily Notes path from .obsidian/daily-notes.json.
+ * Avoids spawning the Obsidian CLI binary, which causes renderer reloads.
+ */
+function vaultDailyPath(vault: string, date: Date): string | null {
+  const cfgPath = join(vault, ".obsidian", "daily-notes.json");
+  if (!existsSync(cfgPath)) return null;
+  try {
+    const raw = readFileSync(cfgPath, "utf-8");
+    const cfg = JSON.parse(raw) as DailyNotesConfig;
+    const folder = cfg.folder?.trim() || "Daily";
+    const fileName = cfg.format?.trim()
+      ? formatDailyNoteFileName(date, cfg.format.trim())
+      : dailyNoteFileName(date);
+    if (!fileName) return null;
+    return join(vault, folder, fileName);
+  } catch {
+    return null;
+  }
+}
 
 /** Zero-pads a number to 2 digits. */
 function pad2(n: number): string {
@@ -25,7 +74,11 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string {
     return join(config.vault, `${yyyy}-${mm}-${dd}.md`);
   }
 
-  // Try Obsidian CLI first (respects user's Daily Notes folder setting)
+  // Try .obsidian/daily-notes.json first (no CLI spawn, no renderer reload)
+  const vaultPath = vaultDailyPath(config.vault, date);
+  if (vaultPath) return vaultPath;
+
+  // Try Obsidian CLI (respects user's Daily Notes folder setting)
   const relativePath = cliDailyPath();
   if (relativePath) return join(config.vault, relativePath);
 
