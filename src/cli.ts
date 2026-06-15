@@ -308,8 +308,11 @@ function uninstallCodex(clearRestoreMetadata: boolean): void {
 
   const legacyNotify = unregisterCodexNotify(config?.codexNotifyRestore ?? null);
   if (legacyNotify.changed) {
-    const action = legacyNotify.restoreNotify && legacyNotify.restoreNotify.length > 0 ? "restored" : "removed";
-    console.log(`Legacy Codex notify ${action}: ${CODEX_CONFIG_PATH}`);
+    if (config?.codexNotifyRestore && config.codexNotifyRestore.length > 0) {
+      console.log(`Legacy Codex notify restored: ${CODEX_CONFIG_PATH}`);
+    } else {
+      console.log(`Legacy Codex notify removed: ${CODEX_CONFIG_PATH}`);
+    }
   }
 
   if (clearRestoreMetadata && config) {

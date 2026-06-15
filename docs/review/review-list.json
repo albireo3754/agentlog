@@ -190,7 +190,7 @@
         {
           "type": "anyContentRegex",
           "paths": ["src/__tests__/**/*.ts"],
-          "pattern": "uninstall --codex exits cleanly when Codex hooks\\.json is invalid",
+          "pattern": "uninstall --codex exits cleanly when (?:Codex )?hooks\\.json is invalid",
           "message": "Add a regression test for malformed Codex hooks.json during uninstall."
         }
       ]
@@ -207,8 +207,14 @@
         {
           "type": "noneContentRegex",
           "paths": ["src/cli.ts", "README.md", "AGENTS.md"],
-          "pattern": "Remove Codex hook only|Remove Codex hook from `~/.codex/hooks\\.json` only|Legacy Codex notify restored: \\$\\{CODEX_CONFIG_PATH\\}",
+          "pattern": "Remove Codex hook only|Remove Codex hook from `~/.codex/hooks\\.json` only",
           "message": "Do not imply Codex uninstall only touches hooks or always restores notify; it may remove an AgentLog-owned legacy notify entry."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/cli.ts"],
+          "pattern": "Legacy Codex notify removed",
+          "message": "Emit a distinct message when Codex uninstall removes an AgentLog-owned legacy notify entry instead of restoring a previous command."
         },
         {
           "type": "anyContentRegex",
@@ -219,7 +225,7 @@
         {
           "type": "anyContentRegex",
           "paths": ["src/__tests__/**/*.ts"],
-          "pattern": "legacy notify removal",
+          "pattern": "legacy notify removal|removes legacy notify",
           "message": "Add a regression test for legacy notify removal when no restore command exists."
         }
       ]
