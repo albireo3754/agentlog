@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "description": "Local self-review gates for recurring AgentLog PR review findings.",
+  "description": "Static gates promoted from docs/review/SELF_REVIEW.md recurring AgentLog PR review findings.",
   "rules": [
     {
       "id": "bug-fixture-fidelity",
