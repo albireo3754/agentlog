@@ -28,6 +28,7 @@
     "dev": "bun run src/cli.ts",
     "dev:watch": "bun run --watch src/cli.ts",
     "prepublishOnly": "bun run typecheck",
+    "self-review": "node scripts/self-review.mjs",
     "test": "bun test",
     "test:install-smoke": "bun run scripts/e2e-bun-link-smoke.ts",
     "typecheck": "tsc --noEmit",

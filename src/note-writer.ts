@@ -50,7 +50,6 @@ function formatDailyNoteFileName(date: Date, format: string): string | null {
     d: String(date.getDay()),
   };
   const replaced = baseFormat.replace(FORMAT_TOKEN_RE, (token) => replacements[token] ?? token);
-  if ((replaced.match(FORMAT_ALPHA_RE) ?? []).some((token) => !token.includes("요"))) return null;
   return `${replaced}.md`;
 }
 
