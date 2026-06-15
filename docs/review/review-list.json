@@ -122,6 +122,57 @@
       ]
     },
     {
+      "id": "ci-main-push-coverage",
+      "severity": "medium",
+      "title": "CI should run on main pushes when main PRs are supported",
+      "appliesTo": {
+        "paths": [".github/workflows/ci.yml"],
+        "diffIncludesAny": ["pull_request", "main", "push"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": [".github/workflows/ci.yml"],
+          "pattern": "push:\\s*\\n\\s*branches:\\s*\\[[^\\]\\n]*main",
+          "message": "Include `main` in CI push branches when PRs can target main."
+        }
+      ]
+    },
+    {
+      "id": "release-main-publish-concurrency",
+      "severity": "high",
+      "title": "Main-branch publish workflows must serialize release attempts",
+      "appliesTo": {
+        "paths": [".github/workflows/release.yml"],
+        "diffIncludesAny": ["npm publish", "branches: [main]", "tag_check"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": [".github/workflows/release.yml"],
+          "pattern": "^concurrency:",
+          "message": "Add workflow-level concurrency so concurrent main pushes cannot double-publish the same version."
+        }
+      ]
+    },
+    {
+      "id": "release-tag-gate-single-path",
+      "severity": "medium",
+      "title": "Release tag checks should gate the publish path once",
+      "appliesTo": {
+        "paths": [".github/workflows/release.yml"],
+        "diffIncludesAny": ["tag_check.outputs.exists", "npm publish"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": [".github/workflows/release.yml"],
+          "pattern": "if:\\s*steps\\.tag_check\\.outputs\\.exists\\s*==\\s*'false'[\\s\\S]*if:\\s*steps\\.tag_check\\.outputs\\.exists\\s*==\\s*'false'",
+          "message": "Use a job-level publish gate instead of repeating the same tag-check condition on many steps."
+        }
+      ]
+    },
+    {
       "id": "plan-path-resolution-doc-contract",
       "severity": "medium",
       "title": "Plan docs must not describe unsafe config.vault string concatenation",
