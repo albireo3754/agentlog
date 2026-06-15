@@ -120,6 +120,23 @@ Good evidence:
 - `appendEntry()` aborts missing-note writes when path resolution or CLI bootstrap cannot be confirmed.
 - Regression tests for missing-note bootstrap, no guessed fallback, and bootstrap failure.
 
+### CLI Layering
+
+`src/cli.ts` should stay the command edge, not the home for reusable application support.
+
+Check:
+
+- Commander registration stays in `src/cli.ts`.
+- Shared support such as prompt asking, vault validation, config merge, binary lookup, and repeated status formatting stays outside `src/cli.ts`, regardless of whether it would be written as `function`, `const`, or `export const`.
+- External integrations remain behind adapter modules such as `claude-settings`, `codex-hooks`, `codex-settings`, and `obsidian-cli`.
+- Architecture docs are updated when a new CLI layer or module boundary is introduced.
+
+Good evidence:
+
+- `src/cli-shared.ts` owns reusable CLI support helpers.
+- `docs/architecture/cli-layering.md` explains the current layer map and next safe cuts.
+- targeted CLI tests pass after moving code across module boundaries.
+
 ### Session Link Fidelity
 
 Session links written to Daily Notes should preserve the full session id unless reading legacy data.

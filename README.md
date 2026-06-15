@@ -268,6 +268,8 @@ bun run build         # compile to dist/ (optional)
 
 The `bin` entry points directly to `src/cli.ts`, so you do not need a build during development. Bun runs TypeScript natively.
 
+CLI command boundaries are documented in [docs/architecture/cli-layering.md](docs/architecture/cli-layering.md).
+
 ```bash
 # Link as a global command
 bun link
