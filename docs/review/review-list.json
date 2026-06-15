@@ -196,6 +196,29 @@
       ]
     },
     {
+      "id": "englishask-cwd-fallback",
+      "severity": "medium",
+      "title": "EnglishAsk evaluator must tolerate unavailable notify cwd",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator", "cwd"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "statSync\\(|runnableCwd\\(|process\\.cwd\\(",
+          "message": "Do not run the evaluator blindly in notify `cwd`; fall back when that path is unavailable."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "notify cwd is unavailable|missing cwd|missing-cwd",
+          "message": "Add a regression test for unavailable notify cwd, matching CI/other-machine payloads."
+        }
+      ]
+    },
+    {
       "id": "englishask-fail-soft",
       "severity": "high",
       "title": "EnglishAsk evaluator failures must not break AgentLog writes",

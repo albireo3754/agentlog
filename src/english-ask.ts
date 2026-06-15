@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, statSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
 import type { AgentLogConfig, EnglishAskFeedback } from "./types.js";
 
@@ -57,6 +57,14 @@ function scoreFrom(output: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
+function runnableCwd(cwd: string): string {
+  try {
+    return statSync(cwd).isDirectory() ? cwd : process.cwd();
+  } catch {
+    return process.cwd();
+  }
+}
+
 export function shouldEvaluateEnglishAsk(config: AgentLogConfig, prompt: string): boolean {
   if (!configured(config)) return false;
   if (process.env[ENGLISHASK_GUARD_ENV] === "1") return false;
@@ -79,7 +87,7 @@ export function evaluateEnglishAsk(config: AgentLogConfig, prompt: string, cwd: 
 
   try {
     const result = spawnSync(bin, args, {
-      cwd,
+      cwd: runnableCwd(cwd),
       input,
       encoding: "utf-8",
       timeout: timeoutMs,

@@ -95,6 +95,21 @@ describe("EnglishAsk", () => {
     expect(result).toBeNull();
   });
 
+  it("falls back to the current process cwd when the notify cwd is unavailable", () => {
+    const { command, inputPath } = fakeEvaluator(
+      "Score: 4/5\nNatural version: ok\nMissing context: none\nRewrite with: none"
+    );
+
+    const result = evaluateEnglishAsk(
+      { vault: tmp, englishAsk: { enabled: true, evaluatorCommand: command } },
+      "What should I do next?",
+      join(tmp, "missing-cwd")
+    );
+
+    expect(result?.score).toBe(4);
+    expect(readFileSync(inputPath, "utf-8")).toContain("User prompt:\nWhat should I do next?");
+  });
+
   it("returns null when evaluator times out", () => {
     const script = join(tmp, "slow-englishask.sh");
     writeFileSync(script, "#!/bin/sh\nsleep 1\n", "utf-8");
