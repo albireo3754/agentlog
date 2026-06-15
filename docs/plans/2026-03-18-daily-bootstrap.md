@@ -1,10 +1,10 @@
 # Daily Bootstrap Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> Implement task-by task with failing tests first. No external sub-skill is required.
 
 **Goal:** Ensure AgentLog lets Obsidian create a missing Daily Note before AgentLog writes into it, and remove the unsafe guessed-path fallback in non-plain mode.
 
-**Architecture:** Keep the current AgentLog markdown merge algorithm, but move Daily Note bootstrap responsibility into `src/obsidian-cli.ts`. In non-plain mode, `src/note-writer.ts` should resolve the authoritative Daily path, ensure the file exists through Obsidian CLI when missing, and only then run the existing section insertion logic.
+**Architecture:** Keep the current AgentLog markdown merge algorithm, but move missing-note bootstrap responsibility into `src/obsidian-cli.ts`. In non-plain mode, `src/note-writer.ts` should keep the existing config-first path resolution, use `obsidian daily:path` only as the next path-resolution fallback, ensure the resolved file exists through Obsidian CLI when missing, and only then run the existing section insertion logic.
 
 **Tech Stack:** Bun, TypeScript, Node 20, Obsidian CLI 1.12+, existing AgentLog hook and notify entrypoints.
 
@@ -74,7 +74,7 @@ Expected: PASS
 
 Add tests for:
 
-- missing Daily file + successful bootstrap -> note is created, then AgentLog content is merged
+- missing Daily file + successful bootstrap -> note is created with template content, then AgentLog content is merged without removing that template content
 - `daily:path` unavailable -> non-plain write does not create guessed fallback file
 - bootstrap failure -> write aborts instead of creating a raw file
 
@@ -88,7 +88,9 @@ Expected: FAIL because current code still creates files directly
 In `appendEntry()` / path resolution:
 
 - keep plain mode unchanged
-- require `cliDailyPath()` in non-plain mode
+- keep `.obsidian/daily-notes.json` as the first path source when it is valid
+- use `cliDailyPath()` only when the config path is unavailable or unsupported
+- remove the hardcoded `{vault}/Daily/...` fallback in non-plain mode
 - if the resolved target file is missing, call `cliEnsureDailyNoteExists()`
 - re-check file existence before reading/writing
 - throw or return a controlled failure when bootstrap cannot be confirmed
@@ -197,6 +199,7 @@ Expected: PASS
 **Step 4: Commit**
 
 ```bash
-git add src/obsidian-cli.ts src/note-writer.ts src/hook.ts src/codex-notify.ts src/__tests__/obsidian-cli.test.ts src/__tests__/note-writer.test.ts README.md
+git status --short
+git add src/obsidian-cli.ts src/note-writer.ts src/hook.ts src/codex-notify.ts src/__tests__/obsidian-cli.test.ts src/__tests__/note-writer.test.ts README.md docs/cc/hook-integration.md docs/obsidian/06-official-cli-research.md docs/obsidian/README.md
 git commit -m "fix: bootstrap missing daily notes via obsidian cli"
 ```

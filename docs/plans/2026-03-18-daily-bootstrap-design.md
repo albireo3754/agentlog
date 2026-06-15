@@ -10,11 +10,11 @@ Make AgentLog safe when today's Daily Note does not exist yet by letting Obsidia
 
 ## Problem Statement
 
-Today, AgentLog resolves the target file path with `obsidian daily:path`, then writes the markdown file directly.
+Today, AgentLog resolves the target file path from `.obsidian/daily-notes.json` when possible, falls back to `obsidian daily:path`, then writes the markdown file directly.
 
 That is good enough when today's note already exists and the CLI path is stable. It is not good enough when today's note is missing:
 
-- `daily:path` returns the expected path, not a guarantee that the file already exists.
+- `.obsidian/daily-notes.json` and `daily:path` return the expected path, not a guarantee that the file already exists.
 - `obsidian daily` creates the note and applies the user's Daily Notes template.
 - direct file creation by AgentLog can bypass Obsidian's bootstrap path and produce a raw markdown file before the template is applied.
 - if CLI lookup fails, the current `{vault}/Daily/YYYY-MM-DD-<weekday>.md` fallback can drift from the user's configured Daily Notes folder or naming format.
@@ -31,7 +31,7 @@ Observed in the reporter's environment:
 
 Observed in the current code:
 
-- [`src/note-writer.ts`](../../src/note-writer.ts) uses `cliDailyPath()` and then writes the resolved file directly.
+- [`src/note-writer.ts`](../../src/note-writer.ts) resolves a Daily Notes config path before falling back to `cliDailyPath()`, then writes the resolved file directly.
 - [`src/obsidian-cli.ts`](../../src/obsidian-cli.ts) exposes `cliDailyPath()`, but no "ensure note exists" primitive.
 - hook entrypoints in [`src/hook.ts`](../../src/hook.ts) and [`src/codex-notify.ts`](../../src/codex-notify.ts) assume `appendEntry()` can safely create the file itself.
 
@@ -43,12 +43,12 @@ Keep the existing markdown merge logic, but make Obsidian responsible for bootst
 
 Flow:
 
-1. resolve the relative path with `obsidian daily:path`
+1. resolve the target path from `.obsidian/daily-notes.json` when valid, otherwise with `obsidian daily:path`
 2. if the file is missing, call `obsidian daily`
 3. verify the file now exists
 4. run existing AgentLog section insertion against the resulting file
 
-If the CLI is unavailable or bootstrap fails, skip the write instead of silently creating a guessed file path.
+If no authoritative path can be resolved, the CLI is unavailable for missing-note bootstrap, or bootstrap fails, skip the write instead of silently creating a guessed file path.
 
 **Pros**
 
@@ -94,9 +94,11 @@ Let Obsidian append content instead of AgentLog editing the file.
 
 Adopt Approach A.
 
-The key design rule is:
+The key design rules are:
 
 > In non-plain mode, AgentLog should not create today's Daily Note by guessing a filesystem path. It should first ask Obsidian to create the note, then perform the structured AgentLog write.
+>
+> AgentLog may read `.obsidian/daily-notes.json` for path resolution, but missing-note creation still belongs to Obsidian CLI.
 
 ## Architecture Changes
 
@@ -119,13 +121,13 @@ Responsibilities:
 
 ### 2. `src/note-writer.ts`
 
-Replace the current fallback-first behavior with an authoritative bootstrap flow in non-plain mode.
+Replace the current fallback-first behavior with an authoritative bootstrap flow in non-plain mode, while keeping config-first path resolution.
 
 New non-plain flow:
 
-1. call `cliDailyPath()`
-2. if no relative path is returned, abort non-plain write
-3. compute absolute path from `config.vault + relativePath`
+1. resolve the path from `.obsidian/daily-notes.json` when valid
+2. otherwise call `cliDailyPath()`
+3. if no authoritative path is returned, abort non-plain write
 4. if file does not exist:
    - call `cliEnsureDailyNoteExists()`
    - re-check the same absolute path
@@ -150,12 +152,13 @@ That keeps runtime safety while improving correctness.
 
 Current behavior:
 
-- path fallback guesses `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
+- path fallback can guess `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
 - AgentLog may create the wrong file
 
 New behavior:
 
-- skip the write
+- if a valid config path already resolves to an existing file, write there
+- otherwise skip the write instead of guessing or creating a missing file directly
 - emit a compact non-fatal diagnostic
 
 Example:
@@ -192,7 +195,7 @@ New cases:
 
 1. `cliEnsureDailyNoteExists()` succeeds when `obsidian daily` exits 0
 2. `cliEnsureDailyNoteExists()` returns failure on non-zero exit
-3. `appendEntry()` bootstraps the Daily Note when `daily:path` resolves a missing file
+3. `appendEntry()` bootstraps the Daily Note when the resolved config or `daily:path` target is missing, and preserves template content written by the mock `obsidian daily`
 4. `appendEntry()` does not create a guessed fallback file when `daily:path` is unavailable
 5. existing section-merge behavior still passes for already-existing notes
 
