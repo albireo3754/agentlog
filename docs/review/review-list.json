@@ -105,6 +105,41 @@
       ]
     },
     {
+      "id": "daily-bootstrap-safe-creation",
+      "severity": "high",
+      "title": "Missing Obsidian Daily Notes must be bootstrapped through the CLI",
+      "appliesTo": {
+        "paths": ["src/note-writer.ts", "src/obsidian-cli.ts", "src/__tests__/note-writer.test.ts", "README.md", "AGENTS.md", "llms.txt", "docs/**/*.md"],
+        "diffIncludesAny": ["dailyNotePath", "cliEnsureDailyNoteExists", "daily:path", "Daily Note", "bootstrap"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/obsidian-cli.ts"],
+          "pattern": "function\\s+cliEnsureDailyNoteExists[\\s\\S]*\\[\"daily\"\\]",
+          "message": "Add an Obsidian CLI bootstrap helper that runs `obsidian daily`, not only `daily:path`."
+        },
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/note-writer.ts"],
+          "pattern": "return\\s+join\\(config\\.vault,\\s*\"Daily\",\\s*dailyNoteFileName\\(",
+          "message": "Do not create a guessed `{vault}/Daily/...` fallback in Obsidian mode when no safe path source is available."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/note-writer.test.ts"],
+          "pattern": "bootstraps a missing Daily Note through Obsidian before appending",
+          "message": "Add a regression test proving missing notes are created through Obsidian before AgentLog writes."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/note-writer.test.ts"],
+          "pattern": "does not create a guessed fallback file when no safe path resolves",
+          "message": "Add a regression test proving unsafe fallback creation is skipped."
+        }
+      ]
+    },
+    {
       "id": "docs-session-divider-length",
       "severity": "medium",
       "title": "Documented source-prefixed session dividers must use full session ids",

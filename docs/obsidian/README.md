@@ -15,5 +15,4 @@
 5. [05-project-judgement-extra-docs.md](./05-project-judgement-extra-docs.md)
    - 운영/확장 문서 백로그 및 2주 로드맵
 6. [06-official-cli-research.md](./06-official-cli-research.md)
-   - Obsidian 공식 CLI 조사, REST API 대비, AgentLog 권장 운영안
-
+   - Obsidian 공식 CLI 조사, REST API 대비, Daily Note bootstrap 결정, AgentLog 권장 운영안

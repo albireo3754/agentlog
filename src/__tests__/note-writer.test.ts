@@ -54,11 +54,11 @@ describe("dailyNotePath", () => {
     }
   });
 
-  it("returns Obsidian Daily path with Korean day name (CLI unavailable)", () => {
+  it("returns null when no non-plain path source is available", () => {
     process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
     const config: AgentLogConfig = { vault: "/vault" };
     const path = dailyNotePath(config, TEST_DATE);
-    expect(path).toBe("/vault/Daily/2026-03-01-일.md");
+    expect(path).toBeNull();
   });
 
   it("returns plain path without Daily subdir", () => {
@@ -219,7 +219,7 @@ describe("dailyNotePath", () => {
     );
 
     const path = dailyNotePath({ vault }, TEST_DATE);
-    expect(path).toBe(join(vault, "Daily/2026-03-01-일.md"));
+    expect(path).toBeNull();
 
     rmSync(vault, { recursive: true, force: true });
   });
@@ -232,18 +232,18 @@ describe("dailyNotePath", () => {
     process.env.OBSIDIAN_BIN = mockBin;
 
     const path = dailyNotePath({ vault }, TEST_DATE);
-    expect(path).toBe(join(vault, "Daily/2026-03-01-일.md"));
+    expect(path).toBeNull();
 
     rmSync(mockBin, { force: true });
     rmSync(vault, { recursive: true, force: true });
   });
 
-  it("falls back to hardcoded path when CLI fails", () => {
+  it("returns null when CLI fails and config is unavailable", () => {
     process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
 
     const config: AgentLogConfig = { vault: "/vault" };
     const path = dailyNotePath(config, TEST_DATE);
-    expect(path).toBe("/vault/Daily/2026-03-01-일.md");
+    expect(path).toBeNull();
   });
 
 });
@@ -256,8 +256,14 @@ describe("appendEntry — session-grouped AgentLog section", () => {
   beforeEach(() => {
     tmpDir = makeTmpDir();
     config = { vault: tmpDir };
-    // Disable CLI so tests use hardcoded Daily/ path with the test date
+    // Disable CLI; most tests resolve the Daily path through vault settings.
     process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    mkdirSync(join(tmpDir, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(tmpDir, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Daily", format: "YYYY-MM-DD-ddd" }),
+      "utf-8"
+    );
     mkdirSync(join(tmpDir, "Daily"), { recursive: true });
   });
 
@@ -270,8 +276,45 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     }
   });
 
+  function dailyFilePath(): string {
+    return join(tmpDir, "Daily", "2026-03-01-일.md");
+  }
+
+  function writeDailyFile(content = FIXTURE_NO_TIMEBLOCKS): string {
+    const filePath = dailyFilePath();
+    writeFileSync(filePath, content, "utf-8");
+    return filePath;
+  }
+
+  function installDailyBootstrapCli(template: string): string {
+    const mockBin = join(tmpDir, "mock-obsidian");
+    const filePath = dailyFilePath();
+    writeFileSync(
+      mockBin,
+      [
+        "#!/bin/bash",
+        "if [ \"$1\" = \"daily:path\" ]; then",
+        "  echo \"Daily/2026-03-01-일.md\"",
+        "  exit 0",
+        "fi",
+        "if [ \"$1\" = \"daily\" ]; then",
+        `  mkdir -p ${JSON.stringify(join(tmpDir, "Daily"))}`,
+        `  printf '%s' ${JSON.stringify(template)} > ${JSON.stringify(filePath)}`,
+        "  exit 0",
+        "fi",
+        "exit 1",
+      ].join("\n"),
+      "utf-8"
+    );
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+    return filePath;
+  }
+
   // N1: new file — creates ## AgentLog + > 🕐 + #### section
-  it("creates ## AgentLog with latest line and project section on new file", () => {
+  it("bootstraps a missing Daily Note through Obsidian before appending", () => {
+    installDailyBootstrapCli("# 2026-03-01\n\n## Template\n- keep me\n");
+
     const entry = makeEntry();
     const result = appendEntry(config, entry, TEST_DATE);
 
@@ -280,6 +323,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(existsSync(result.filePath)).toBe(true);
 
     const content = readFileSync(result.filePath, "utf-8");
+    expect(content).toContain("## Template");
+    expect(content).toContain("- keep me");
     expect(content).toContain("## AgentLog");
     expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
     expect(content).toContain("#### 10:53 · js/agentlog");
@@ -288,10 +333,38 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).toContain("- 10:53 테스트 작업");
   });
 
+  it("does not create a guessed fallback file when no safe path resolves", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    rmSync(join(tmpDir, ".obsidian", "daily-notes.json"), { force: true });
+
+    expect(() => appendEntry(config, makeEntry(), TEST_DATE)).toThrow("Daily Note path could not be resolved");
+    expect(existsSync(dailyFilePath())).toBe(false);
+  });
+
+  it("aborts missing-note writes when Obsidian bootstrap fails", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-fail");
+    writeFileSync(
+      mockBin,
+      [
+        "#!/bin/bash",
+        "if [ \"$1\" = \"daily:path\" ]; then",
+        "  echo \"Daily/2026-03-01-일.md\"",
+        "  exit 0",
+        "fi",
+        "exit 1",
+      ].join("\n"),
+      "utf-8"
+    );
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    expect(() => appendEntry(config, makeEntry(), TEST_DATE)).toThrow("Daily Note is missing");
+    expect(existsSync(dailyFilePath())).toBe(false);
+  });
+
   // N2: file with existing content — appends ## AgentLog at end
   it("appends ## AgentLog section to existing file without modifying existing content", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile();
 
     const entry = makeEntry();
     appendEntry(config, entry, TEST_DATE);
@@ -304,8 +377,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N3: file with timeblocks — entries go to ## AgentLog, NOT into timeblocks
   it("writes to ## AgentLog section even when timeblocks exist (no timeblock insertion)", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_WITH_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile(FIXTURE_WITH_TIMEBLOCKS);
 
     const entry = makeEntry();
     const result = appendEntry(config, entry, TEST_DATE);
@@ -323,8 +395,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N4: same project, same session → append to existing section
   it("appends to existing project section when project and session match", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile();
 
     const entry1 = makeEntry({ time: "10:53", prompt: "첫 번째 작업" });
     const entry2 = makeEntry({ time: "11:07", prompt: "두 번째 작업" });
@@ -343,7 +414,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
   });
 
   it("treats legacy short session divider as the same current session", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    const filePath = dailyFilePath();
     writeFileSync(
       filePath,
       [
@@ -369,8 +440,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N5: same project, different session → insert divider
   it("inserts session divider when session changes within same project", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile();
 
     const entry1 = makeEntry({ time: "10:53", sessionId: "session1-aaaa-bbbb-cccc-dddddddddddd" });
     const entry2 = makeEntry({ time: "15:00", sessionId: "session2-xxxx-yyyy-zzzz-111111111111" });
@@ -386,8 +456,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N5b: codex source emits [[codex_...]] dividers
   it("emits codex-prefixed divider when source is codex", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile();
 
     const entry1 = makeEntry({ time: "10:53", source: "codex", sessionId: "codex111-aaaa-bbbb-cccc-dddddddddddd" });
     const entry2 = makeEntry({ time: "15:00", source: "codex", sessionId: "codex222-xxxx-yyyy-zzzz-111111111111" });
@@ -402,8 +471,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N6: different projects → separate #### sections
   it("creates separate sections for different projects", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile();
 
     const entry1 = makeEntry({
       time: "10:53",
@@ -425,8 +493,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N7: > 🕐 latest line always reflects the most recent entry
   it("updates > 🕐 latest line to the most recent entry on each write", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile();
 
     appendEntry(config, makeEntry({ time: "10:53", prompt: "첫 번째" }), TEST_DATE);
     appendEntry(config, makeEntry({ time: "11:07", prompt: "두 번째" }), TEST_DATE);
@@ -439,8 +506,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N8: project header preserves original start time when session updates
   it("preserves original project start time in header when session changes", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile();
 
     appendEntry(config, makeEntry({ time: "10:53", sessionId: "session1-aaaa-bbbb-cccc-dddddddddddd" }), TEST_DATE);
     appendEntry(config, makeEntry({ time: "15:00", sessionId: "session2-xxxx-yyyy-zzzz-111111111111" }), TEST_DATE);
@@ -453,7 +519,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N9: ## AgentLog already exists → append project section inside it
   it("appends to existing ## AgentLog section", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    const filePath = dailyFilePath();
     writeFileSync(
       filePath,
       "# 2026-03-01\n\n## AgentLog\n> 🕐 09:00 — js/old › old entry\n\n#### 09:00 · js/old\n<!-- cwd=/old/path ses=abc00000 -->\n- 09:00 old entry\n",
@@ -472,7 +538,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N10: empty file
   it("handles empty file without crashing", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    const filePath = dailyFilePath();
     writeFileSync(filePath, "", "utf-8");
 
     const entry = makeEntry();
@@ -484,6 +550,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N11: WriteResult fields
   it("returns section=agentlog and correct filePath", () => {
+    writeDailyFile();
     const entry = makeEntry();
     const result = appendEntry(config, entry, TEST_DATE);
     expect(result.section).toBe("agentlog");
@@ -492,10 +559,11 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N12: section header contains cwd (no ses in metadata)
   it("embeds full cwd in section header comment (ses tracked via dividers)", () => {
+    writeDailyFile();
     const entry = makeEntry();
     appendEntry(config, entry, TEST_DATE);
 
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    const filePath = dailyFilePath();
     const content = readFileSync(filePath, "utf-8");
     expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog -->");
     expect(content).not.toContain("ses=");
@@ -503,6 +571,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N13: cwd with spaces — section matching must not break
   it("handles cwd with spaces in path correctly", () => {
+    writeDailyFile();
     const entry = makeEntry({
       cwd: "/Users/John Doe/work/js/agentlog",
       project: "js/agentlog",
@@ -518,7 +587,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     });
     appendEntry(config, entry2, TEST_DATE);
 
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    const filePath = dailyFilePath();
     const content = readFileSync(filePath, "utf-8");
     // Should have only one #### section (not two)
     const sections = content.split("#### ");
@@ -530,8 +599,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
 
   // N14: 3 entries in same session — all appended in order within the section
   it("appends three entries in same session in insertion order", () => {
-    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
-    writeFileSync(filePath, FIXTURE_NO_TIMEBLOCKS, "utf-8");
+    const filePath = writeDailyFile();
 
     appendEntry(config, makeEntry({ time: "10:00", prompt: "첫 번째" }), TEST_DATE);
     appendEntry(config, makeEntry({ time: "10:30", prompt: "두 번째" }), TEST_DATE);

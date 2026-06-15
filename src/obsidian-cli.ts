@@ -78,6 +78,17 @@ export function cliDailyPath(): string | null {
   return path || null;
 }
 
+/**
+ * Ask Obsidian to create/open today's Daily Note through its official flow.
+ * This lets Obsidian apply the user's Daily Notes template before AgentLog writes.
+ */
+export function cliEnsureDailyNoteExists(): boolean {
+  const bin = resolveCliBin();
+  if (!bin) return false;
+  const result = spawnSync(bin, ["daily"], { encoding: "utf-8", timeout: 3000 });
+  return result.status === 0;
+}
+
 /** Minimum Obsidian version that supports CLI */
 export const MIN_CLI_VERSION = "1.12.4";
 

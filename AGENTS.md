@@ -190,10 +190,11 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
 
 ### Obsidian CLI
 
-- Used to resolve the Daily Note path via `obsidian daily:path`
+- Used to resolve the Daily Note path from `.obsidian/daily-notes.json`, then `obsidian daily:path`
+- Used to bootstrap a missing Daily Note via `obsidian daily` before AgentLog writes, preserving the user's Daily Notes template
 - Minimum version: checked by `doctor` (1.12.4+)
 - Override binary path: `OBSIDIAN_BIN`
-- Fallback when CLI unavailable: `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
+- No guessed `{vault}/Daily/...` fallback is created in Obsidian mode when no safe path or bootstrap is available
 
 ### Config File
 
