@@ -105,6 +105,40 @@
       ]
     },
     {
+      "id": "plan-path-resolution-doc-contract",
+      "severity": "medium",
+      "title": "Plan docs must not describe unsafe config.vault string concatenation",
+      "appliesTo": {
+        "paths": ["docs/plans/**/*.md"],
+        "diffIncludesAny": ["config.vault", "relativePath"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["docs/plans/**/*.md"],
+          "pattern": "config\\.vault\\s*\\+\\s*relativePath",
+          "message": "Use path joining or confinement wording instead of `config.vault + relativePath` in plans."
+        }
+      ]
+    },
+    {
+      "id": "plan-cli-min-version-doc-contract",
+      "severity": "medium",
+      "title": "Plan docs must use the enforced Obsidian CLI minimum version",
+      "appliesTo": {
+        "paths": ["docs/plans/**/*.md"],
+        "diffIncludesAny": ["Obsidian CLI", "MIN_CLI_VERSION", "1.12+"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["docs/plans/**/*.md"],
+          "pattern": "Obsidian CLI[^\\n`]*1\\.12\\+",
+          "message": "Use `Obsidian CLI 1.12.4+` or reference `MIN_CLI_VERSION` in plans."
+        }
+      ]
+    },
+    {
       "id": "format-token-validation",
       "severity": "medium",
       "title": "Date format token support must be explicit and tested",
