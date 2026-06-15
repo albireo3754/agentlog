@@ -1,7 +1,7 @@
 /**
  * Obsidian vault auto-detection for agentlog init.
  * Reads macOS Obsidian app registry and scans common paths.
- * Also detects Obsidian CLI (1.12+) availability.
+ * Also detects Obsidian CLI (1.12.4+) availability.
  */
 
 import { existsSync, readFileSync } from "fs";
