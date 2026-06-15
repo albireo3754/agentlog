@@ -213,7 +213,7 @@
         {
           "type": "anyContentRegex",
           "paths": ["src/cli.ts"],
-          "pattern": "Legacy Codex notify removed",
+          "pattern": "Legacy Codex notify (?:removed|\\$\\{action\\})",
           "message": "Emit a distinct message when Codex uninstall removes an AgentLog-owned legacy notify entry instead of restoring a previous command."
         },
         {
