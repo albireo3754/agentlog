@@ -48,7 +48,7 @@ Flow:
 3. verify the file now exists
 4. run existing AgentLog section insertion against the resulting file
 
-If no authoritative path can be resolved, the CLI is unavailable for missing-note bootstrap, or bootstrap fails, skip the write instead of silently creating a guessed file path.
+If neither config nor CLI can resolve a safe Daily path, the CLI is unavailable for missing-note bootstrap, or bootstrap fails, skip the write instead of silently creating a guessed file path.
 
 **Pros**
 
@@ -106,7 +106,7 @@ The key design rules are:
 
 Add an explicit bootstrap helper around the official CLI:
 
-- `cliDailyPath()` remains the authoritative relative-path resolver.
+- `cliDailyPath()` remains the CLI fallback path resolver.
 - add `cliEnsureDailyNoteExists()`:
   - call `obsidian daily`
   - return success/failure
@@ -121,13 +121,13 @@ Responsibilities:
 
 ### 2. `src/note-writer.ts`
 
-Replace the current fallback-first behavior with an authoritative bootstrap flow in non-plain mode, while keeping config-first path resolution.
+Replace the current fallback-first behavior with a CLI-backed bootstrap flow in non-plain mode, while keeping config-first path resolution.
 
 New non-plain flow:
 
 1. resolve the path from `.obsidian/daily-notes.json` when valid
 2. otherwise call `cliDailyPath()`
-3. if no authoritative path is returned, abort non-plain write
+3. if neither source returns a safe path, abort non-plain write
 4. if file does not exist:
    - call `cliEnsureDailyNoteExists()`
    - re-check the same absolute path
@@ -196,7 +196,7 @@ New cases:
 1. `cliEnsureDailyNoteExists()` succeeds when `obsidian daily` exits 0
 2. `cliEnsureDailyNoteExists()` returns failure on non-zero exit
 3. `appendEntry()` bootstraps the Daily Note when the resolved config or `daily:path` target is missing, and preserves template content written by the mock `obsidian daily`
-4. `appendEntry()` does not create a guessed fallback file when `daily:path` is unavailable
+4. `appendEntry()` does not create a guessed fallback file when neither config nor `daily:path` resolves a safe path
 5. existing section-merge behavior still passes for already-existing notes
 
 ### Smoke verification
@@ -216,7 +216,7 @@ Update:
 Required wording changes:
 
 - stop claiming that `daily:path` is enough for safe Daily creation
-- explain that non-plain mode depends on Obsidian CLI for authoritative Daily bootstrap
+- explain that non-plain mode depends on Obsidian CLI for missing-note bootstrap
 - clarify that plain mode remains direct-file mode
 
 ## Follow-up Source Docs
@@ -249,7 +249,7 @@ Primary sections to revise:
 Update the hook flow so it matches the new runtime behavior:
 
 - remove or rewrite any direct `{vault}/Daily/...` assumption as the main non-plain path
-- explain that the hook still fails softly, but non-plain writes now depend on authoritative Obsidian bootstrap
+- explain that the hook still fails softly, but non-plain missing-note writes now depend on Obsidian bootstrap
 - keep plain mode notes separate from Obsidian-backed mode
 
 Primary sections to revise:
@@ -267,7 +267,7 @@ Convert this file from passive research into implementation-aligned guidance:
 
 ### 4. `docs/obsidian/README.md`
 
-Update the index so it points readers to the authoritative Daily bootstrap explanation once a dedicated document section or new doc exists.
+Update the index so it points readers to the Daily bootstrap explanation once a dedicated document section or new doc exists.
 
 If no new Obsidian doc is added, at minimum revise the description for `06-official-cli-research.md` so readers understand it now informs the implemented bootstrap behavior.
 
@@ -275,7 +275,7 @@ If no new Obsidian doc is added, at minimum revise the description for `06-offic
 
 1. When today's Daily Note is missing, AgentLog first triggers Obsidian's Daily bootstrap path before appending AgentLog content.
 2. A freshly created Daily Note preserves the user's Daily template structure.
-3. Non-plain mode no longer silently creates a guessed fallback file when the authoritative CLI path cannot be resolved.
+3. Non-plain mode no longer silently creates a guessed fallback file when config and CLI path lookup cannot resolve a safe path.
 4. Existing AgentLog grouping behavior remains unchanged once the file exists.
 5. Tests cover both missing-note bootstrap and CLI-unavailable behavior.
 

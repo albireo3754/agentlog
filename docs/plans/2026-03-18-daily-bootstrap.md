@@ -1,12 +1,12 @@
 # Daily Bootstrap Implementation Plan
 
-> Implement task-by task with failing tests first. No external sub-skill is required.
+> Implement task-by-task with failing tests first. No external sub-skill is required.
 
 **Goal:** Ensure AgentLog lets Obsidian create a missing Daily Note before AgentLog writes into it, and remove the unsafe guessed-path fallback in non-plain mode.
 
 **Architecture:** Keep the current AgentLog markdown merge algorithm, but move missing-note bootstrap responsibility into `src/obsidian-cli.ts`. In non-plain mode, `src/note-writer.ts` should keep the existing config-first path resolution, use `obsidian daily:path` only as the next path-resolution fallback, ensure the resolved file exists through Obsidian CLI when missing, and only then run the existing section insertion logic.
 
-**Tech Stack:** Bun, TypeScript, Node 20, Obsidian CLI 1.12+, existing AgentLog hook and notify entrypoints.
+**Tech Stack:** Bun, TypeScript, Node 20, Obsidian CLI 1.12.4+ (`MIN_CLI_VERSION`), existing AgentLog hook and notify entrypoints.
 
 ---
 
@@ -75,7 +75,7 @@ Expected: PASS
 Add tests for:
 
 - missing Daily file + successful bootstrap -> note is created with template content, then AgentLog content is merged without removing that template content
-- `daily:path` unavailable -> non-plain write does not create guessed fallback file
+- neither config nor `daily:path` resolves a safe path -> non-plain write does not create guessed fallback file
 - bootstrap failure -> write aborts instead of creating a raw file
 
 **Step 2: Run test to verify it fails**
@@ -133,7 +133,7 @@ Change docs so they no longer imply:
 
 Document:
 
-- non-plain mode uses Obsidian CLI as the authoritative bootstrap path
+- non-plain mode uses Obsidian CLI for missing-note bootstrap
 - plain mode is still direct-file append
 
 **Step 2: Review the diff for consistency**
@@ -157,7 +157,7 @@ Check the README sections:
 Reflect the final behavior in user-facing language:
 
 - missing Daily Note bootstrap goes through Obsidian CLI
-- `daily:path` is authoritative for path lookup, not sufficient by itself for safe creation
+- Daily path lookup is config-first, then `daily:path`; neither source is sufficient by itself for safe missing-note creation
 - non-plain mode no longer relies on guessed fallback creation
 
 **Step 2: Update Claude hook docs**
