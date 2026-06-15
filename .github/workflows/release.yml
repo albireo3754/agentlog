@@ -4,12 +4,18 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  check_release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag_exists: ${{ steps.tag_check.outputs.exists }}
     permissions:
-      contents: write
-      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
 
@@ -30,44 +36,46 @@ jobs:
         if: steps.tag_check.outputs.exists == 'true'
         run: echo "v${{ steps.version.outputs.version }} already released, skipping."
 
+  release:
+    needs: check_release
+    if: needs.check_release.outputs.tag_exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
       - uses: oven-sh/setup-bun@v2
-        if: steps.tag_check.outputs.exists == 'false'
         with:
           bun-version: latest
 
       - name: Install dependencies
-        if: steps.tag_check.outputs.exists == 'false'
         run: bun install
 
       - name: Typecheck
-        if: steps.tag_check.outputs.exists == 'false'
         run: bun run typecheck
 
       - name: Test
-        if: steps.tag_check.outputs.exists == 'false'
         run: bun test
 
       - name: Build
-        if: steps.tag_check.outputs.exists == 'false'
         run: bun run build
 
       - name: Create GitHub Release
-        if: steps.tag_check.outputs.exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: v${{ steps.version.outputs.version }}
+          tag_name: v${{ needs.check_release.outputs.version }}
+          name: v${{ needs.check_release.outputs.version }}
           generate_release_notes: true
           target_commitish: main
 
       - uses: actions/setup-node@v4
-        if: steps.tag_check.outputs.exists == 'false'
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm
-        if: steps.tag_check.outputs.exists == 'false'
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -42,8 +42,8 @@ function fixture(name: string): string {
 function makeFakeCodexPath(home: string): string {
   const binDir = join(home, "bin");
   mkdirSync(binDir, { recursive: true });
-  for (const name of ["codex", "agentlog"]) {
-    const bin = join(binDir, name);
+  for (const binName of ["codex", "agentlog"]) {
+    const bin = join(binDir, binName);
     writeFileSync(bin, "#!/bin/sh\nexit 0\n", "utf-8");
     chmodSync(bin, 0o755);
   }
