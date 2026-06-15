@@ -579,7 +579,7 @@ async function cmdOpen(): Promise<void> {
     console.log("Opened today's Daily Note in Obsidian.");
   } else {
     console.error("Failed to open. Is Obsidian running with CLI enabled?");
-    console.error("  Enable CLI in Obsidian 1.12.4+ Settings > General > Command line interface");
+    console.error(`  Enable CLI in Obsidian ${MIN_CLI_VERSION}+ Settings > General > Command line interface`);
     process.exit(1);
   }
 }

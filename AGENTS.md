@@ -223,10 +223,10 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
-- - - - [[claude_a1b2c3]]
+- - - - [[claude_a1b2c3d4]]
 - 10:53 start building agentlog
 - 11:07 open the spec document
-- - - - [[claude_e5f6a7]]
+- - - - [[claude_e5f6a7b8]]
 - 11:21 initialize git
 ```
 

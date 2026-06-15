@@ -105,6 +105,23 @@
       ]
     },
     {
+      "id": "docs-session-divider-length",
+      "severity": "medium",
+      "title": "Documented source-prefixed session dividers must use runtime suffix length",
+      "appliesTo": {
+        "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
+        "diffIncludesAny": ["[[claude_", "[[codex_", "session divider"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
+          "pattern": "\\[\\[(?:claude|codex)_[A-Za-z0-9]{6}\\]\\]",
+          "message": "Use 8 session-id characters in source-prefixed divider examples, matching runtime `sessionId.slice(0, 8)`."
+        }
+      ]
+    },
+    {
       "id": "plan-path-resolution-doc-contract",
       "severity": "medium",
       "title": "Plan docs must not describe unsafe config.vault string concatenation",
