@@ -149,11 +149,10 @@ export function appendEntry(
  *
  *   #### project · HH:MM                  ← one section per cwd
  *   - HH:MM entry
- *   - - - - [[claude_XXXXXXXX]]          ← divider when session changes
+ *   - - - - [[claude_<session_id>]]      ← divider when session changes
  *   - HH:MM entry
  */
 function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
-  const sessionShort = entry.sessionId.slice(0, 8);
   const entryLine = buildAgentLogEntry(entry.time, entry.prompt);
   const latestLine = buildLatestLine(entry.time, entry.project, entry.prompt);
 
@@ -283,7 +282,9 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
     }
     if (!currentSes) currentSes = legacySes;
 
-    if (currentSes !== sessionShort) {
+    const sameSession = currentSes === entry.sessionId || currentSes === entry.sessionId.slice(0, 8);
+
+    if (!sameSession) {
       // Session changed: insert divider + entry.
       lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId, entry.source), entryLine);
       // Migrate legacy metadata format to new format (remove ses=).

@@ -168,7 +168,7 @@ describe("EnglishAsk", () => {
     const content = readFileSync(filePath, "utf-8");
     expect(content).toContain("## EnglishAsk");
     expect(content).toContain("### 10:53 · js/agentlog");
-    expect(content).toContain("- session: [[codex_abcdef12]]");
+    expect(content).toContain("- session: [[codex_abcdef12-3456]]");
     expect(content).toContain("- score: 3/5");
     expect(content).toContain("What should I do next?");
   });

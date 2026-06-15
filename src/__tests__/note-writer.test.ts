@@ -284,7 +284,7 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).toContain("> 🕐 10:53 — js/agentlog › 테스트 작업");
     expect(content).toContain("#### 10:53 · js/agentlog");
     expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog -->");
-    expect(content).toContain("- - - - [[claude_abc12345]]");
+    expect(content).toContain("- - - - [[claude_abc12345-def6-7890-abcd-ef1234567890]]");
     expect(content).toContain("- 10:53 테스트 작업");
   });
 
@@ -342,6 +342,31 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(dividerCount).toBe(1);
   });
 
+  it("treats legacy short session divider as the same current session", () => {
+    const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
+    writeFileSync(
+      filePath,
+      [
+        "## AgentLog",
+        "> 🕐 10:53 — js/agentlog › 첫 번째 작업",
+        "",
+        "#### 10:53 · js/agentlog",
+        "<!-- cwd=/Users/pray/work/js/agentlog -->",
+        "- - - - [[claude_abc12345]]",
+        "- 10:53 첫 번째 작업",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    appendEntry(config, makeEntry({ time: "11:07", prompt: "두 번째 작업" }), TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    const dividerCount = (content.match(/- - - -/g) ?? []).length;
+    expect(dividerCount).toBe(1);
+    expect(content).toContain("- 11:07 두 번째 작업");
+  });
+
   // N5: same project, different session → insert divider
   it("inserts session divider when session changes within same project", () => {
     const filePath = join(tmpDir, "Daily", "2026-03-01-일.md");
@@ -353,8 +378,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     appendEntry(config, entry2, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("- - - - [[claude_session1]]");
-    expect(content).toContain("- - - - [[claude_session2]]");
+    expect(content).toContain("- - - - [[claude_session1-aaaa-bbbb-cccc-dddddddddddd]]");
+    expect(content).toContain("- - - - [[claude_session2-xxxx-yyyy-zzzz-111111111111]]");
     expect(content).toContain("- 10:53 테스트 작업");
     expect(content).toContain("- 15:00 테스트 작업");
   });
@@ -370,8 +395,8 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     appendEntry(config, entry2, TEST_DATE);
 
     const content = readFileSync(filePath, "utf-8");
-    expect(content).toContain("- - - - [[codex_codex111]]");
-    expect(content).toContain("- - - - [[codex_codex222]]");
+    expect(content).toContain("- - - - [[codex_codex111-aaaa-bbbb-cccc-dddddddddddd]]");
+    expect(content).toContain("- - - - [[codex_codex222-xxxx-yyyy-zzzz-111111111111]]");
     expect(content).not.toContain("claude_");
   });
 
