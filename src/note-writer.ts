@@ -71,7 +71,7 @@ function vaultDailyPath(vault: string, date: Date): string | null {
   try {
     const raw = readFileSync(cfgPath, "utf-8");
     const cfg = JSON.parse(raw) as DailyNotesConfig;
-    const folder = cfg.folder?.trim() || "Daily";
+    const folder = typeof cfg.folder === "string" ? cfg.folder.trim() : "Daily";
     const fileName = cfg.format?.trim()
       ? formatDailyNoteFileName(date, cfg.format.trim())
       : dailyNoteFileName(date);

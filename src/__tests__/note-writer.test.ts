@@ -120,6 +120,22 @@ describe("dailyNotePath", () => {
     rmSync(vault, { recursive: true, force: true });
   });
 
+  it("uses vault root when Daily Notes folder config is empty", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "", format: "YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
   it("accepts a supported Daily Notes format that already includes .md", () => {
     process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
     const vault = makeTmpDir();
