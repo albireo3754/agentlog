@@ -12,6 +12,12 @@ const MACOS_CLI_PATHS = [
   "/Applications/Obsidian.app/Contents/MacOS/obsidian",
 ];
 
+/** Timeout for lightweight CLI probes such as `which`, `version`, and `daily:path`. */
+export const CLI_PROBE_TIMEOUT_MS = 3000;
+
+/** Missing-note bootstrap can start or wake Obsidian, so it gets a longer timeout. */
+export const DAILY_BOOTSTRAP_TIMEOUT_MS = 10000;
+
 type CliBinCacheState =
   | { status: "unresolved" }
   | { status: "resolved"; bin: string }
@@ -39,7 +45,7 @@ export function resolveCliBin(): string | null {
   if (_cachedBinState.status === "resolved") return _cachedBinState.bin;
   if (_cachedBinState.status === "not-found") return null;
 
-  const which = spawnSync("which", ["obsidian"], { encoding: "utf-8", timeout: 3000 });
+  const which = spawnSync("which", ["obsidian"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS });
   if (which.status === 0 && which.stdout.trim()) {
     _cachedBinState = { status: "resolved", bin: which.stdout.trim() };
     return _cachedBinState.bin;
@@ -66,7 +72,7 @@ export function resolveCliBin(): string | null {
 export function cliDailyPath(): string | null {
   const bin = resolveCliBin();
   if (!bin) return null;
-  const result = spawnSync(bin, ["daily:path"], { encoding: "utf-8", timeout: 3000 });
+  const result = spawnSync(bin, ["daily:path"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS });
   if (result.status !== 0) return null;
   // stdout may contain Electron noise lines (e.g. "Loading updated app package",
   // version warnings). The actual path is always the last non-empty line.
@@ -85,7 +91,7 @@ export function cliDailyPath(): string | null {
 export function cliEnsureDailyNoteExists(): boolean {
   const bin = resolveCliBin();
   if (!bin) return false;
-  const result = spawnSync(bin, ["daily"], { encoding: "utf-8", timeout: 3000 });
+  const result = spawnSync(bin, ["daily"], { encoding: "utf-8", timeout: DAILY_BOOTSTRAP_TIMEOUT_MS });
   return result.status === 0;
 }
 

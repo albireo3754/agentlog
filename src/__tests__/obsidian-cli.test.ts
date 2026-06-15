@@ -1,6 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 
-import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, cliDailyPath, cliEnsureDailyNoteExists } from "../obsidian-cli.js";
+import {
+  CLI_PROBE_TIMEOUT_MS,
+  DAILY_BOOTSTRAP_TIMEOUT_MS,
+  isVersionAtLeast,
+  MIN_CLI_VERSION,
+  resolveCliBin,
+  cliDailyPath,
+  cliEnsureDailyNoteExists,
+} from "../obsidian-cli.js";
 import { writeFileSync, readFileSync, mkdirSync, chmodSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
@@ -48,6 +56,12 @@ describe("isVersionAtLeast", () => {
 describe("MIN_CLI_VERSION", () => {
   it("is set to 1.12.4", () => {
     expect(MIN_CLI_VERSION).toBe("1.12.4");
+  });
+});
+
+describe("Obsidian CLI timeouts", () => {
+  it("gives Daily bootstrap more time than lightweight probes", () => {
+    expect(DAILY_BOOTSTRAP_TIMEOUT_MS).toBeGreaterThan(CLI_PROBE_TIMEOUT_MS);
   });
 });
 

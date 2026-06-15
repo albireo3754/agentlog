@@ -120,6 +120,18 @@
           "message": "Add an Obsidian CLI bootstrap helper that runs `obsidian daily`, not only `daily:path`."
         },
         {
+          "type": "anyContentRegex",
+          "paths": ["src/obsidian-cli.ts"],
+          "pattern": "DAILY_BOOTSTRAP_TIMEOUT_MS[\\s\\S]*CLI_PROBE_TIMEOUT_MS|CLI_PROBE_TIMEOUT_MS[\\s\\S]*DAILY_BOOTSTRAP_TIMEOUT_MS",
+          "message": "Keep a distinct longer timeout for `obsidian daily` bootstrap than for lightweight CLI probes."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/obsidian-cli.test.ts"],
+          "pattern": "DAILY_BOOTSTRAP_TIMEOUT_MS\\)\\.toBeGreaterThan\\(CLI_PROBE_TIMEOUT_MS",
+          "message": "Test that Daily bootstrap timeout stays longer than lightweight probe timeout."
+        },
+        {
           "type": "noneContentRegex",
           "paths": ["src/note-writer.ts"],
           "pattern": "return\\s+join\\(config\\.vault,\\s*\"Daily\",\\s*dailyNoteFileName\\(",
