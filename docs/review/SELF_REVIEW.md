@@ -83,6 +83,23 @@ Check:
 - Old statements like "always uses Obsidian CLI" are removed or qualified.
 - README/CLAUDE/docs are updated only when they are in scope.
 
+### Evaluator Hooks
+
+Any evaluator launched from a hook or notify path must be fail-soft and non-recursive.
+
+Check:
+
+- Child evaluator runs set an env guard before invoking Codex or other agent tooling.
+- The notify/hook path checks that guard and skips evaluator recursion.
+- Evaluator failure, non-zero exit, and timeout cannot prevent the normal AgentLog write.
+- Prompts and evaluator output are redacted and bounded before storage.
+
+Good evidence:
+
+- env guard such as `AGENTLOG_ENGLISHASK_EVAL`
+- tests for guard skip, evaluator failure, and timeout
+- config defaults that keep evaluator features off unless explicitly enabled
+
 ### Plan and Design Contract Drift
 
 Implementation plans and design docs must not drift from the current code contract.

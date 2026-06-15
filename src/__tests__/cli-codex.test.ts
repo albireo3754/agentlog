@@ -50,6 +50,22 @@ function makeFakeCodexPath(home: string): string {
   return `${binDir}:${process.env.PATH ?? "/usr/bin:/bin"}`;
 }
 
+function makeFakeEnglishAskEvaluator(home: string): { command: string[]; inputPath: string } {
+  const script = join(home, "englishask-eval.sh");
+  const inputPath = join(home, "englishask-input.txt");
+  writeFileSync(
+    script,
+    `#!/bin/sh
+test "$AGENTLOG_ENGLISHASK_EVAL" = "1" || exit 7
+cat > "$1"
+printf 'Score: 3/5\\nNatural version: Reply with exactly OK.\\nMissing context: none\\nRewrite with: exact expected output\\n'
+`,
+    "utf-8"
+  );
+  chmodSync(script, 0o755);
+  return { command: [script, inputPath], inputPath };
+}
+
 function findPlainNotePath(vault: string): string {
   const file = readdirSync(vault).find((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name));
   if (!file) {
@@ -278,6 +294,71 @@ describe("cli codex commands", () => {
     expect(exitCode).toBe(0);
     expect(readdirSync(vault).some((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name))).toBe(false);
     expect(existsSync(marker)).toBe(true);
+  });
+
+  it("codex-notify appends EnglishAsk feedback when enabled", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const evaluator = makeFakeEnglishAskEvaluator(tmpHome);
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        englishAsk: {
+          enabled: true,
+          mode: "log-only",
+          evaluatorCommand: evaluator.command,
+        },
+      }),
+      "utf-8"
+    );
+
+    const raw = fixture("codex-notify-single.json");
+    const { exitCode, stderr } = await runCli(["codex-notify", raw], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(content).toContain("Reply with exactly: OK");
+    expect(content).toContain("## EnglishAsk");
+    expect(content).toContain("- score: 3/5");
+    expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("User prompt:\nReply with exactly: OK");
+  });
+
+  it("codex-notify still writes the note when EnglishAsk evaluator fails", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        englishAsk: {
+          enabled: true,
+          evaluatorCommand: ["sh", "-lc", "exit 42"],
+        },
+      }),
+      "utf-8"
+    );
+
+    const raw = fixture("codex-notify-single.json");
+    const { exitCode } = await runCli(["codex-notify", raw], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    expect(exitCode).toBe(0);
+    expect(content).toContain("Reply with exactly: OK");
+    expect(content).not.toContain("## EnglishAsk");
   });
 
   it("legacy codex-uninstall command is rejected", async () => {

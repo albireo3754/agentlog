@@ -203,7 +203,11 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 {
   "vault": "/Users/you/Obsidian",
   "plain": false,
-  "codexNotifyRestore": null
+  "codexNotifyRestore": null,
+  "englishAsk": {
+    "enabled": false,
+    "mode": "log-only"
+  }
 }
 ```
 
@@ -212,6 +216,9 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 | `vault` | yes | Absolute path to the Obsidian vault or plain output folder |
 | `plain` | no | If true, writes simple `YYYY-MM-DD.md` files without Obsidian section structure |
 | `codexNotifyRestore` | no | Previous Codex `notify` value, restored on `uninstall --codex` |
+| `englishAsk` | no | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true |
+
+EnglishAsk evaluates English Codex user prompts with `codex exec` after the normal Daily Note append. Results are written under `## EnglishAsk`; evaluator failures and timeouts are fail-soft. `AGENTLOG_ENGLISHASK_EVAL=1` prevents recursive evaluator logging.
 
 ## Daily Note Output Format
 

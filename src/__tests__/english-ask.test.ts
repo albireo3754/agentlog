@@ -1,0 +1,169 @@
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
+import {
+  ENGLISHASK_GUARD_ENV,
+  appendEnglishAskFeedback,
+  englishAskSuggestion,
+  evaluateEnglishAsk,
+  shouldEvaluateEnglishAsk,
+} from "../english-ask.js";
+import type { AgentLogConfig, EnglishAskFeedback } from "../types.js";
+
+let tmp: string;
+
+function makeTmp(): string {
+  const dir = join(tmpdir(), `agentlog-englishask-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function fakeEvaluator(output: string): { command: string[]; inputPath: string } {
+  const script = join(tmp, "fake-englishask.sh");
+  const inputPath = join(tmp, "evaluator-input.txt");
+  writeFileSync(
+    script,
+    `#!/bin/sh
+test "$${ENGLISHASK_GUARD_ENV}" = "1" || exit 7
+cat > "$1"
+printf '%s' '${output.replace(/'/g, "'\\''")}'
+`,
+    "utf-8"
+  );
+  chmodSync(script, 0o755);
+  return { command: [script, inputPath], inputPath };
+}
+
+describe("EnglishAsk", () => {
+  beforeEach(() => {
+    tmp = makeTmp();
+  });
+
+  afterEach(() => {
+    delete process.env[ENGLISHASK_GUARD_ENV];
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("is off by default", () => {
+    expect(shouldEvaluateEnglishAsk({ vault: tmp }, "What should I do next?")).toBe(false);
+  });
+
+  it("skips recursive evaluator notify calls", () => {
+    process.env[ENGLISHASK_GUARD_ENV] = "1";
+    expect(
+      shouldEvaluateEnglishAsk({ vault: tmp, englishAsk: { enabled: true } }, "What should I do next?")
+    ).toBe(false);
+  });
+
+  it("skips non-English prompts", () => {
+    expect(
+      shouldEvaluateEnglishAsk({ vault: tmp, englishAsk: { enabled: true } }, "다음에 뭐 할까?")
+    ).toBe(false);
+  });
+
+  it("runs evaluator with recursion guard and parses score", () => {
+    const { command, inputPath } = fakeEvaluator(
+      "Score: 3/5\nNatural version: What should I do next?\nMissing context: target\nRewrite with: target/result"
+    );
+    const config: AgentLogConfig = {
+      vault: tmp,
+      englishAsk: {
+        enabled: true,
+        evaluatorCommand: command,
+      },
+    };
+
+    const result = evaluateEnglishAsk(config, "What should I do next?", tmp);
+
+    expect(result?.score).toBe(3);
+    expect(result?.feedback).toContain("Score: 3/5");
+    expect(readFileSync(inputPath, "utf-8")).toContain("User prompt:\nWhat should I do next?");
+  });
+
+  it("returns null when evaluator fails", () => {
+    const script = join(tmp, "fail-englishask.sh");
+    writeFileSync(script, "#!/bin/sh\nexit 42\n", "utf-8");
+    chmodSync(script, 0o755);
+
+    const result = evaluateEnglishAsk(
+      { vault: tmp, englishAsk: { enabled: true, evaluatorCommand: [script] } },
+      "What should I do next?",
+      tmp
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("returns null when evaluator times out", () => {
+    const script = join(tmp, "slow-englishask.sh");
+    writeFileSync(script, "#!/bin/sh\nsleep 1\n", "utf-8");
+    chmodSync(script, 0o755);
+
+    const result = evaluateEnglishAsk(
+      { vault: tmp, englishAsk: { enabled: true, evaluatorCommand: [script], timeoutMs: 20 } },
+      "What should I do next?",
+      tmp
+    );
+
+    expect(result).toBeNull();
+  });
+
+  it("redacts and truncates prompt before evaluator", () => {
+    const { command, inputPath } = fakeEvaluator(
+      "Score: 4/5\nNatural version: ok\nMissing context: none\nRewrite with: none"
+    );
+    const config: AgentLogConfig = {
+      vault: tmp,
+      englishAsk: {
+        enabled: true,
+        evaluatorCommand: command,
+        maxPromptChars: 40,
+      },
+    };
+
+    const result = evaluateEnglishAsk(config, "Use sk-abcdefghijklmnopqrstuvwxyz and explain the next action", tmp);
+
+    expect(result?.prompt).toContain("[redacted-api-key]");
+    expect(result?.prompt).toContain("[truncated]");
+    expect(readFileSync(inputPath, "utf-8")).not.toContain("sk-abcdefghijklmnopqrstuvwxyz");
+  });
+
+  it("appends feedback to an EnglishAsk Daily Note section", () => {
+    const filePath = join(tmp, "2026-03-02.md");
+    writeFileSync(filePath, "## AgentLog\n- existing\n", "utf-8");
+    const feedback: EnglishAskFeedback = {
+      score: 3,
+      prompt: "What should I do next?",
+      feedback: "Score: 3/5\nNatural version: What should I do next?",
+    };
+
+    appendEnglishAskFeedback(
+      filePath,
+      feedback,
+      {
+        time: "10:53",
+        project: "js/agentlog",
+        cwd: "/Users/pray/work/js/agentlog",
+        sessionId: "abcdef12-3456",
+      },
+      { vault: tmp, englishAsk: { enabled: true, mode: "log-only" } }
+    );
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("## EnglishAsk");
+    expect(content).toContain("### 10:53 · js/agentlog");
+    expect(content).toContain("- session: [[codex_abcdef12]]");
+    expect(content).toContain("- score: 3/5");
+    expect(content).toContain("What should I do next?");
+  });
+
+  it("emits optional rewrite guidance in suggest mode", () => {
+    const suggestion = englishAskSuggestion(
+      { vault: tmp, englishAsk: { enabled: true, mode: "suggest", threshold: 3 } },
+      { score: 3, prompt: "What next?", feedback: "Score: 3/5" }
+    );
+
+    expect(suggestion).toContain("EnglishAsk score 3/5");
+  });
+});

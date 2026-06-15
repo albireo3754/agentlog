@@ -4,6 +4,7 @@ import { appendEntry } from "./note-writer.js";
 import { cwdToProject } from "./schema/daily-note.js";
 import { parseCodexNotifyInput } from "./schema/codex-notify-input.js";
 import { prettyPrompt } from "./schema/pretty-prompt.js";
+import { appendEnglishAskFeedback, englishAskSuggestion, evaluateEnglishAsk } from "./english-ask.js";
 
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -48,18 +49,27 @@ export async function runCodexNotify(rawArg?: string): Promise<void> {
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
 
-    appendEntry(
+    const entry = {
+      time: `${hh}:${mm}`,
+      prompt,
+      sessionId: parsed.sessionId,
+      project: cwdToProject(parsed.cwd),
+      cwd: parsed.cwd,
+      source: "codex" as const,
+    };
+
+    const result = appendEntry(
       config,
-      {
-        time: `${hh}:${mm}`,
-        prompt,
-        sessionId: parsed.sessionId,
-        project: cwdToProject(parsed.cwd),
-        cwd: parsed.cwd,
-        source: "codex",
-      },
+      entry,
       now
     );
+
+    const feedback = evaluateEnglishAsk(config, prompt, parsed.cwd);
+    if (feedback) {
+      appendEnglishAskFeedback(result.filePath, feedback, entry, config);
+      const suggestion = englishAskSuggestion(config, feedback);
+      if (suggestion) process.stderr.write(suggestion);
+    }
   } catch (err) {
     process.stderr.write(`[agentlog] codex notify error: ${err}\n`);
   } finally {
