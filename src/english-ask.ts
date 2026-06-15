@@ -130,6 +130,27 @@ function indentFeedback(feedback: string): string {
     .join("\n");
 }
 
+function listItemValue(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function insertFeedbackBlock(content: string, block: string): string {
+  const sectionMatch = /(^|\n)## EnglishAsk[ \t]*(?:\n|$)/.exec(content);
+  if (!sectionMatch) {
+    const prefix = content.length === 0 ? "" : content.endsWith("\n") ? "\n" : "\n\n";
+    return `${content}${prefix}## EnglishAsk\n\n${block}\n`;
+  }
+
+  const bodyStart = sectionMatch.index + sectionMatch[0].length;
+  const nextHeading = /\n## /.exec(content.slice(bodyStart));
+  const insertAt = nextHeading ? bodyStart + nextHeading.index : content.length;
+  const before = content.slice(0, insertAt);
+  const after = content.slice(insertAt);
+  const prefix = before.endsWith("\n") ? "\n" : "\n\n";
+
+  return `${before}${prefix}${block}\n${after}`;
+}
+
 export function appendEnglishAskFeedback(
   filePath: string,
   feedback: EnglishAskFeedback,
@@ -147,7 +168,7 @@ export function appendEnglishAskFeedback(
     `<!-- cwd=${entry.cwd} -->`,
     `- session: [[codex_${entry.sessionId.slice(0, 8)}]]`,
     `- score: ${scoreText}`,
-    `- prompt: ${feedback.prompt}`,
+    `- prompt: ${listItemValue(feedback.prompt)}`,
     `${rewriteHint}`,
     "```text",
     indentFeedback(feedback.feedback),
@@ -155,10 +176,6 @@ export function appendEnglishAskFeedback(
   ].filter(Boolean).join("\n");
 
   const content = existsSync(filePath) ? readFileSync(filePath, "utf-8") : "";
-  const separator = content.endsWith("\n") || content.length === 0 ? "" : "\n";
-  const section = content.includes("\n## EnglishAsk") || content.startsWith("## EnglishAsk")
-    ? ""
-    : `${separator}\n## EnglishAsk\n`;
-  const next = `${content}${section}${section ? "" : separator}\n${block}\n`;
+  const next = insertFeedbackBlock(content, block);
   writeFileSync(filePath, next, "utf-8");
 }

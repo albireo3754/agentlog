@@ -173,6 +173,57 @@ describe("EnglishAsk", () => {
     expect(content).toContain("What should I do next?");
   });
 
+  it("keeps stored prompt metadata on one Markdown list line", () => {
+    const filePath = join(tmp, "2026-03-02.md");
+    const feedback: EnglishAskFeedback = {
+      score: 3,
+      prompt: "What should I do next?\n[truncated]",
+      feedback: "Score: 3/5",
+    };
+
+    appendEnglishAskFeedback(
+      filePath,
+      feedback,
+      {
+        time: "10:53",
+        project: "js/agentlog",
+        cwd: "/Users/pray/work/js/agentlog",
+        sessionId: "abcdef12-3456",
+      },
+      { vault: tmp, englishAsk: { enabled: true } }
+    );
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("- prompt: What should I do next? [truncated]");
+    expect(content).not.toContain("- prompt: What should I do next?\n[truncated]");
+  });
+
+  it("inserts new feedback inside an existing EnglishAsk section", () => {
+    const filePath = join(tmp, "2026-03-02.md");
+    writeFileSync(filePath, "## AgentLog\n- existing\n\n## EnglishAsk\n\n### old\n- score: 5/5\n\n## Other\n- keep\n", "utf-8");
+    const feedback: EnglishAskFeedback = {
+      score: 2,
+      prompt: "Needs section placement",
+      feedback: "Score: 2/5",
+    };
+
+    appendEnglishAskFeedback(
+      filePath,
+      feedback,
+      {
+        time: "10:54",
+        project: "js/agentlog",
+        cwd: "/Users/pray/work/js/agentlog",
+        sessionId: "abcdef12-3456",
+      },
+      { vault: tmp, englishAsk: { enabled: true } }
+    );
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content.indexOf("## EnglishAsk")).toBeLessThan(content.indexOf("Needs section placement"));
+    expect(content.indexOf("Needs section placement")).toBeLessThan(content.indexOf("## Other"));
+  });
+
   it("emits optional rewrite guidance in suggest mode", () => {
     const suggestion = englishAskSuggestion(
       { vault: tmp, englishAsk: { enabled: true, mode: "suggest", threshold: 3 } },

@@ -92,13 +92,15 @@ Check:
 - Child evaluator runs set an env guard before invoking Codex or other agent tooling.
 - The notify/hook path checks that guard and skips evaluator recursion.
 - Notify payload `cwd` can be stale or unavailable on CI/another machine; evaluator cwd must fall back safely.
-- Evaluator failure, non-zero exit, and timeout cannot prevent the normal AgentLog write.
+- Evaluator failure, non-zero exit, timeout, and feedback append failures cannot prevent the normal AgentLog write or surface as generic notify errors.
 - Prompts and evaluator output are redacted and bounded before storage.
+- Stored prompt metadata is flattened before being written as a Markdown list item.
+- New feedback is inserted inside the existing `## EnglishAsk` section, before the next top-level heading.
 
 Good evidence:
 
 - env guard such as `AGENTLOG_ENGLISHASK_EVAL`
-- tests for guard skip, missing cwd fallback, evaluator failure, and timeout
+- tests for guard skip, missing cwd fallback, evaluator failure, timeout, append failure, prompt flattening, and existing-section insertion
 - config defaults that keep evaluator features off unless explicitly enabled
 
 ### Plan and Design Contract Drift

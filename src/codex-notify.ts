@@ -66,9 +66,13 @@ export async function runCodexNotify(rawArg?: string): Promise<void> {
 
     const feedback = evaluateEnglishAsk(config, prompt, parsed.cwd);
     if (feedback) {
-      appendEnglishAskFeedback(result.filePath, feedback, entry, config);
-      const suggestion = englishAskSuggestion(config, feedback);
-      if (suggestion) process.stderr.write(suggestion);
+      try {
+        appendEnglishAskFeedback(result.filePath, feedback, entry, config);
+        const suggestion = englishAskSuggestion(config, feedback);
+        if (suggestion) process.stderr.write(suggestion);
+      } catch {
+        // EnglishAsk is best-effort; the normal AgentLog entry is already written.
+      }
     }
   } catch (err) {
     process.stderr.write(`[agentlog] codex notify error: ${err}\n`);

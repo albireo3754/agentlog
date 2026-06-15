@@ -66,6 +66,23 @@ printf 'Score: 3/5\\nNatural version: Reply with exactly OK.\\nMissing context: 
   return { command: [script, inputPath], inputPath };
 }
 
+function makeReadonlyNoteEnglishAskEvaluator(home: string, vault: string): { command: string[]; inputPath: string } {
+  const script = join(home, "englishask-readonly-note.sh");
+  const inputPath = join(home, "englishask-readonly-input.txt");
+  writeFileSync(
+    script,
+    `#!/bin/sh
+test "$AGENTLOG_ENGLISHASK_EVAL" = "1" || exit 7
+cat > "$1"
+chmod 444 "$2"/*.md || exit 8
+printf '%s\\n' 'Score: 3/5' 'Natural version: Reply with exactly OK.' 'Missing context: none' 'Rewrite with: exact expected output'
+`,
+    "utf-8"
+  );
+  chmodSync(script, 0o755);
+  return { command: [script, inputPath, vault], inputPath };
+}
+
 function findPlainNotePath(vault: string): string {
   const file = readdirSync(vault).find((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name));
   if (!file) {
@@ -357,6 +374,38 @@ describe("cli codex commands", () => {
 
     const content = readFileSync(findPlainNotePath(vault), "utf-8");
     expect(exitCode).toBe(0);
+    expect(content).toContain("Reply with exactly: OK");
+    expect(content).not.toContain("## EnglishAsk");
+  });
+
+  it("codex-notify keeps EnglishAsk append failures silent", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const evaluator = makeReadonlyNoteEnglishAskEvaluator(tmpHome, vault);
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        englishAsk: {
+          enabled: true,
+          evaluatorCommand: evaluator.command,
+        },
+      }),
+      "utf-8"
+    );
+
+    const raw = fixture("codex-notify-single.json");
+    const { exitCode, stderr } = await runCli(["codex-notify", raw], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
     expect(content).toContain("Reply with exactly: OK");
     expect(content).not.toContain("## EnglishAsk");
   });
