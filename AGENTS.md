@@ -218,7 +218,7 @@ Invoked automatically by Codex on `agent-turn-complete`. Do not call directly.
 | `codexNotifyRestore` | no | Previous Codex `notify` value, restored on `uninstall --codex` |
 | `englishAsk` | no | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true |
 
-EnglishAsk evaluates English Codex user prompts with `codex exec` after the normal Daily Note append. Results are written under `## EnglishAsk`; evaluator failures and timeouts are fail-soft. `AGENTLOG_ENGLISHASK_EVAL=1` prevents recursive evaluator logging.
+EnglishAsk evaluates English Codex user prompts with `codex exec` after the normal Daily Note append. Results are written under `## EnglishAsk`; evaluator failures and timeouts are fail-soft. `AGENTLOG_ENGLISHASK_EVAL=1` skips evaluator child notify turns.
 
 ## Daily Note Output Format
 

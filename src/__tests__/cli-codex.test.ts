@@ -9,7 +9,7 @@ const CLI_PATH = fileURLToPath(new URL("../cli.ts", import.meta.url));
 
 async function runCli(
   args: string[],
-  opts: { HOME?: string; AGENTLOG_CONFIG_DIR?: string; PATH?: string } = {}
+  opts: { HOME?: string; AGENTLOG_CONFIG_DIR?: string; PATH?: string; AGENTLOG_ENGLISHASK_EVAL?: string } = {}
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const env = { ...process.env, ...opts };
   const proc = Bun.spawn(
@@ -346,6 +346,38 @@ describe("cli codex commands", () => {
     expect(content).toContain("## EnglishAsk");
     expect(content).toContain("- score: 3/5");
     expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("User prompt:\nReply with exactly: OK");
+  });
+
+  it("codex-notify skips guarded evaluator child turns without forwarding", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const marker = join(tmpHome, "forwarded-guarded.txt");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        codexNotifyRestore: ["sh", "-lc", `printf forwarded > '${marker}'`],
+        englishAsk: {
+          enabled: true,
+        },
+      }),
+      "utf-8"
+    );
+
+    const raw = fixture("codex-notify-single.json");
+    const { exitCode, stderr } = await runCli(["codex-notify", raw], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+      AGENTLOG_ENGLISHASK_EVAL: "1",
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(readdirSync(vault).some((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name))).toBe(false);
+    expect(existsSync(marker)).toBe(false);
   });
 
   it("codex-notify still writes the note when EnglishAsk evaluator fails", async () => {

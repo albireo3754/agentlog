@@ -183,15 +183,15 @@
       "checks": [
         {
           "type": "anyContentRegex",
-          "paths": ["src/**/*.ts"],
-          "pattern": "AGENTLOG_ENGLISHASK_EVAL",
-          "message": "Set and check `AGENTLOG_ENGLISHASK_EVAL` around evaluator runs."
+          "paths": ["src/codex-notify.ts"],
+          "pattern": "ENGLISHASK_GUARD_ENV|AGENTLOG_ENGLISHASK_EVAL",
+          "message": "Check `AGENTLOG_ENGLISHASK_EVAL` in the notify entry point before normal writes/forwarding."
         },
         {
           "type": "anyContentRegex",
           "paths": ["src/__tests__/**/*.ts"],
-          "pattern": "AGENTLOG_ENGLISHASK_EVAL",
-          "message": "Test EnglishAsk recursion guard behavior."
+          "pattern": "guarded evaluator child turns|AGENTLOG_ENGLISHASK_EVAL",
+          "message": "Test that guarded evaluator child notify turns create no note and no forwarded notify."
         }
       ]
     },
@@ -261,6 +261,29 @@
           "paths": ["src/__tests__/**/*.ts"],
           "pattern": "existing EnglishAsk section|## Other",
           "message": "Add a regression test proving new feedback lands inside an existing `## EnglishAsk` section."
+        }
+      ]
+    },
+    {
+      "id": "englishask-feedback-fence-safety",
+      "severity": "medium",
+      "title": "EnglishAsk feedback must not escape its Markdown code fence",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "feedback", "```"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "codeFenceFor\\(|longestBacktickRun",
+          "message": "Use a dynamic fence longer than any backtick run in evaluator feedback."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "longer Markdown fence|## Injected",
+          "message": "Add a regression test with evaluator feedback containing ``` and a heading-like line."
         }
       ]
     },

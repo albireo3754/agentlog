@@ -4,7 +4,12 @@ import { appendEntry } from "./note-writer.js";
 import { cwdToProject } from "./schema/daily-note.js";
 import { parseCodexNotifyInput } from "./schema/codex-notify-input.js";
 import { prettyPrompt } from "./schema/pretty-prompt.js";
-import { appendEnglishAskFeedback, englishAskSuggestion, evaluateEnglishAsk } from "./english-ask.js";
+import {
+  ENGLISHASK_GUARD_ENV,
+  appendEnglishAskFeedback,
+  englishAskSuggestion,
+  evaluateEnglishAsk,
+} from "./english-ask.js";
 
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -30,8 +35,10 @@ function forwardNotify(raw: string, restore: string[] | null | undefined): void 
 }
 
 export async function runCodexNotify(rawArg?: string): Promise<void> {
-  const config = loadConfig();
   const raw = rawArg ?? await readStdin();
+  if (process.env[ENGLISHASK_GUARD_ENV] === "1") return;
+
+  const config = loadConfig();
 
   try {
     if (!config) {

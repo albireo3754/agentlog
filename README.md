@@ -199,7 +199,7 @@ Example EnglishAsk config:
 }
 ```
 
-When enabled, AgentLog evaluates English Codex user prompts with `codex exec` after writing the normal AgentLog entry. Results are appended to the same Daily Note under `## EnglishAsk`. Evaluator failures and timeouts are ignored. Child evaluator runs set `AGENTLOG_ENGLISHASK_EVAL=1` so AgentLog does not recursively evaluate evaluator prompts.
+When enabled, AgentLog evaluates English Codex user prompts with `codex exec` after writing the normal AgentLog entry. Results are appended to the same Daily Note under `## EnglishAsk`. Evaluator failures and timeouts are ignored. Child evaluator runs set `AGENTLOG_ENGLISHASK_EVAL=1` so AgentLog skips evaluator child notify turns.
 
 Environment variables:
 

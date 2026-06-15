@@ -130,6 +130,11 @@ function indentFeedback(feedback: string): string {
     .join("\n");
 }
 
+function codeFenceFor(feedback: string): string {
+  const longestBacktickRun = Math.max(2, ...(feedback.match(/`+/g) ?? []).map((run) => run.length));
+  return "`".repeat(Math.max(3, longestBacktickRun + 1));
+}
+
 function listItemValue(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -163,6 +168,7 @@ export function appendEnglishAskFeedback(
   const rewriteHint = mode === "suggest" && feedback.score !== null && feedback.score <= threshold
     ? "- action: rewrite suggested before next question"
     : "";
+  const fence = codeFenceFor(feedback.feedback);
   const block = [
     `### ${entry.time} · ${entry.project}`,
     `<!-- cwd=${entry.cwd} -->`,
@@ -170,9 +176,9 @@ export function appendEnglishAskFeedback(
     `- score: ${scoreText}`,
     `- prompt: ${listItemValue(feedback.prompt)}`,
     `${rewriteHint}`,
-    "```text",
+    `${fence}text`,
     indentFeedback(feedback.feedback),
-    "```",
+    fence,
   ].filter(Boolean).join("\n");
 
   const content = existsSync(filePath) ? readFileSync(filePath, "utf-8") : "";

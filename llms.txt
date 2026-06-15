@@ -83,7 +83,7 @@ Fields:
 
 Environment variables:
 - `AGENTLOG_CONFIG_DIR`: override config directory (default: `~/.agentlog`)
-- `AGENTLOG_ENGLISHASK_EVAL`: internal recursion guard for EnglishAsk evaluator runs
+- `AGENTLOG_ENGLISHASK_EVAL`: internal guard that skips EnglishAsk evaluator child notify turns
 - `AGENTLOG_PHASE`: force channel `dev` or `prod`
 - `OBSIDIAN_BIN`: override Obsidian CLI binary path
 
