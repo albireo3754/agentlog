@@ -4,6 +4,12 @@ import { appendEntry } from "./note-writer.js";
 import { cwdToProject } from "./schema/daily-note.js";
 import { parseCodexNotifyInput } from "./schema/codex-notify-input.js";
 import { prettyPrompt } from "./schema/pretty-prompt.js";
+import {
+  ENGLISHASK_GUARD_ENV,
+  appendEnglishAskFeedback,
+  englishAskSuggestion,
+  evaluateEnglishAsk,
+} from "./english-ask.js";
 
 function readStdin(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -29,8 +35,10 @@ function forwardNotify(raw: string, restore: string[] | null | undefined): void 
 }
 
 export async function runCodexNotify(rawArg?: string): Promise<void> {
-  const config = loadConfig();
+  if (process.env[ENGLISHASK_GUARD_ENV] === "1") return;
+
   const raw = rawArg ?? await readStdin();
+  const config = loadConfig();
 
   try {
     if (!config) {
@@ -48,18 +56,31 @@ export async function runCodexNotify(rawArg?: string): Promise<void> {
     const hh = String(now.getHours()).padStart(2, "0");
     const mm = String(now.getMinutes()).padStart(2, "0");
 
-    appendEntry(
+    const entry = {
+      time: `${hh}:${mm}`,
+      prompt,
+      sessionId: parsed.sessionId,
+      project: cwdToProject(parsed.cwd),
+      cwd: parsed.cwd,
+      source: "codex" as const,
+    };
+
+    const result = appendEntry(
       config,
-      {
-        time: `${hh}:${mm}`,
-        prompt,
-        sessionId: parsed.sessionId,
-        project: cwdToProject(parsed.cwd),
-        cwd: parsed.cwd,
-        source: "codex",
-      },
+      entry,
       now
     );
+
+    const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd);
+    if (feedback) {
+      try {
+        appendEnglishAskFeedback(result.filePath, feedback, entry, config);
+        const suggestion = englishAskSuggestion(config, feedback);
+        if (suggestion) process.stderr.write(suggestion);
+      } catch {
+        // EnglishAsk is best-effort; the normal AgentLog entry is already written.
+      }
+    }
   } catch (err) {
     process.stderr.write(`[agentlog] codex notify error: ${err}\n`);
   } finally {

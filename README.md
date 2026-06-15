@@ -184,12 +184,29 @@ Current CLI:
 | `vault` | (required) | Path to the Obsidian vault or plain output folder |
 | `plain` | `false` | Plain mode that writes simple markdown files without Obsidian integration |
 | `codexNotifyRestore` | unset | Previous Codex `notify` command. Used to forward/restore on Codex uninstall |
+| `englishAsk` | unset | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is `true` |
+
+Example EnglishAsk config:
+
+```json
+{
+  "englishAsk": {
+    "enabled": true,
+    "mode": "log-only",
+    "threshold": 3,
+    "timeoutMs": 8000
+  }
+}
+```
+
+When enabled, AgentLog evaluates English Codex user prompts with `codex exec` after writing the normal AgentLog entry. Results are appended to the same Daily Note under `## EnglishAsk`. Evaluator failures and timeouts are ignored. Child evaluator runs set `AGENTLOG_ENGLISHASK_EVAL=1` so AgentLog skips evaluator child notify turns.
 
 Environment variables:
 
 | Variable | Description |
 |----------|-------------|
 | `AGENTLOG_CONFIG_DIR` | Override the config directory (default: `~/.agentlog`) |
+| `AGENTLOG_ENGLISHASK_EVAL` | Internal recursion guard for EnglishAsk evaluator runs |
 | `AGENTLOG_PHASE` | Force the runtime channel (`dev` or `prod`), overriding auto-detection |
 | `OBSIDIAN_BIN` | Override the Obsidian CLI binary path |
 

@@ -79,9 +79,11 @@ Fields:
 - `vault` (required): absolute path to Obsidian vault or plain folder
 - `plain` (optional): if true, writes simple YYYY-MM-DD.md files
 - `codexNotifyRestore` (optional): saved previous Codex notify value, restored on uninstall
+- `englishAsk` (optional): Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true. Results append under `## EnglishAsk`.
 
 Environment variables:
 - `AGENTLOG_CONFIG_DIR`: override config directory (default: `~/.agentlog`)
+- `AGENTLOG_ENGLISHASK_EVAL`: internal guard that skips EnglishAsk evaluator child notify turns
 - `AGENTLOG_PHASE`: force channel `dev` or `prod`
 - `OBSIDIAN_BIN`: override Obsidian CLI binary path
 

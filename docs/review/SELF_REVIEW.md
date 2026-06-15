@@ -83,6 +83,28 @@ Check:
 - Old statements like "always uses Obsidian CLI" are removed or qualified.
 - README/CLAUDE/docs are updated only when they are in scope.
 
+### Evaluator Hooks
+
+Any evaluator launched from a hook or notify path must be fail-soft and non-recursive.
+
+Check:
+
+- Child evaluator runs set an env guard before invoking Codex or other agent tooling.
+- The notify/hook path checks that guard before reading stdin, normal writes, and forwarding, then skips evaluator child turns entirely.
+- Notify payload `cwd` can be stale or unavailable on CI/another machine; evaluator cwd must fall back safely.
+- Evaluator failure, non-zero exit, timeout, and feedback append failures cannot prevent the normal AgentLog write or surface as generic notify errors.
+- Evaluators receive the raw user prompt for semantic review; display-only formatting such as `prettyPrompt(...)` is used only for Daily Note entries.
+- Prompts and evaluator output are redacted and bounded before storage.
+- Stored prompt metadata is flattened before being written as a Markdown list item.
+- Stored evaluator feedback cannot break out of its Markdown code fence.
+- New feedback is inserted inside the existing `## EnglishAsk` section, before the next top-level heading, including when the next heading immediately follows the section header.
+
+Good evidence:
+
+- env guard such as `AGENTLOG_ENGLISHASK_EVAL`
+- tests for guarded notify no-write/no-forward, raw evaluator input vs display prompt, missing cwd fallback, evaluator failure, timeout, append failure, prompt flattening, feedback fence safety, and existing-section insertion
+- config defaults that keep evaluator features off unless explicitly enabled
+
 ### Plan and Design Contract Drift
 
 Implementation plans and design docs must not drift from the current code contract.
