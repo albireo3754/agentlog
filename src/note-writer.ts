@@ -147,7 +147,7 @@ export function appendEntry(
  *   ## AgentLog
  *   > 🕐 HH:MM — project › prompt        ← latest entry (always updated)
  *
- *   #### project · HH:MM                  ← one section per cwd
+ *   #### HH:MM · project                  ← one section per cwd
  *   - HH:MM entry
  *   - - - - [[claude_<session_id>]]      ← divider when session changes
  *   - HH:MM entry
