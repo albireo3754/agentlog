@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
-import { join, dirname, resolve, relative, isAbsolute } from "path";
+import { join, dirname, resolve, relative, isAbsolute, sep } from "path";
 import type { AgentLogConfig, LogEntry, WriteResult } from "./types.js";
 import {
   KO_DAYS,
@@ -17,11 +17,14 @@ type DailyNotesConfig = {
   format?: string;
 };
 
-const FORMAT_TOKEN_RE = /YYYY|YY|MMMM|MMM|MM|M|DDDD|DDD|DD|D|dddd|ddd|dd|d/g;
+const FORMAT_TOKEN_RE = /YYYY|YY|MM|M|DD|D|dddd|ddd|dd|d/g;
 const FORMAT_ALPHA_RE = /[A-Za-z]+/g;
+const SUPPORTED_FORMAT_TOKENS = new Set(["YYYY", "YY", "MM", "M", "DD", "D", "dddd", "ddd", "dd", "d"]);
 
 function formatDailyNoteFileName(date: Date, format: string): string | null {
   const baseFormat = format.endsWith(".md") ? format.slice(0, -3) : format;
+  const alphaTokens = baseFormat.match(FORMAT_ALPHA_RE) ?? [];
+  if (alphaTokens.some((token) => !SUPPORTED_FORMAT_TOKENS.has(token) && !token.includes("요"))) return null;
   const dayShort = KO_DAYS[date.getDay()];
   const replacements: Record<string, string> = {
     YYYY: String(date.getFullYear()),
@@ -44,7 +47,7 @@ function safeVaultJoin(vault: string, ...segments: string[]): string | null {
   const root = resolve(vault);
   const target = resolve(root, ...segments);
   const rel = relative(root, target);
-  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return target;
+  if (rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel))) return target;
   return null;
 }
 
@@ -89,7 +92,8 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string {
 
   // Try Obsidian CLI (respects user's Daily Notes folder setting)
   const relativePath = cliDailyPath();
-  if (relativePath) return join(config.vault, relativePath);
+  const cliPath = relativePath ? safeVaultJoin(config.vault, relativePath) : null;
+  if (cliPath) return cliPath;
 
   // Fallback: hardcoded {vault}/Daily/
   return join(config.vault, "Daily", dailyNoteFileName(date));

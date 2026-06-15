@@ -41,7 +41,7 @@ bun run build         # dist/ 빌드
 
 - 런타임: Bun (primary), Node.js 18+ (fallback)
 - hook은 `~/.agentlog/sessions/{date}.jsonl`에 append (JSON Lines)
-- Daily Note 경로는 Obsidian CLI로 동적 조회 (`agentlog-cli daily:path`)
+- Daily Note 경로는 `.obsidian/daily-notes.json`을 우선 읽고, 필요 시 Obsidian CLI로 fallback
 - `[agentlog]` 태그 라인만 관리, 수기 라인은 절대 건드리지 않음
 - config: `~/.agentlog/config.json`
 

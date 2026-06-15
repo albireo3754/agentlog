@@ -156,6 +156,42 @@ describe("dailyNotePath", () => {
     rmSync(vault, { recursive: true, force: true });
   });
 
+  it("falls back to CLI when Daily Notes format uses unsupported named tokens", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY-MMMM-DD" }),
+      "utf-8",
+    );
+    writeFileSync(mockBin, '#!/bin/bash\necho "Cli/2026-March-01.md"', "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Cli/2026-March-01.md"));
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("allows in-vault Daily Notes folders that begin with dot-dot characters", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "..daily", format: "YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "..daily/2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
   it("does not allow Daily Notes config paths outside the vault", () => {
     process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
     const vault = makeTmpDir();
@@ -169,6 +205,20 @@ describe("dailyNotePath", () => {
     const path = dailyNotePath({ vault }, TEST_DATE);
     expect(path).toBe(join(vault, "Daily/2026-03-01-일.md"));
 
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("does not allow CLI paths outside the vault", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    writeFileSync(mockBin, '#!/bin/bash\necho "../outside.md"', "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Daily/2026-03-01-일.md"));
+
+    rmSync(mockBin, { force: true });
     rmSync(vault, { recursive: true, force: true });
   });
 
