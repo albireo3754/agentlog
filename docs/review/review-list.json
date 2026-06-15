@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "description": "Static gates promoted from docs/review/SELF_REVIEW.md recurring AgentLog PR review findings.",
+  "rules": [
+    {
+      "id": "bug-fixture-fidelity",
+      "severity": "high",
+      "title": "Regression tests must reproduce the real bug input shape",
+      "appliesTo": {
+        "paths": ["src/__tests__/**/*.ts"],
+        "diffIncludesAny": ["App is up to date", "Obsidian installer"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\s+App is up to date\\.",
+          "message": "Add a timestamped Electron/Obsidian noise fixture, not only the bare message."
+        }
+      ]
+    },
+    {
+      "id": "cli-not-invoked-sentinel",
+      "severity": "medium",
+      "title": "Tests claiming no CLI invocation must prove it with a sentinel",
+      "appliesTo": {
+        "paths": ["src/__tests__/**/*.ts"],
+        "diffIncludesAny": ["without invoking CLI"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "sentinel",
+          "message": "Use a mock CLI that creates a sentinel file if invoked."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "existsSync\\(sentinel\\)\\)\\.toBe\\(false\\)",
+          "message": "Assert the sentinel file was not created."
+        }
+      ]
+    },
+    {
+      "id": "path-root-confinement",
+      "severity": "high",
+      "title": "Config-derived or external paths must be confined to the vault root",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["config.vault", "cliDailyPath", ".obsidian", "daily-notes.json", "join("]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "function\\s+safeVaultJoin|safeVaultJoin\\(",
+          "message": "Route config/CLI-derived path joins through a vault confinement helper."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "does not allow .*outside the vault",
+          "message": "Add a traversal or absolute-path regression test."
+        }
+      ]
+    },
+    {
+      "id": "external-cli-path-safety",
+      "severity": "high",
+      "title": "CLI stdout paths are untrusted",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["cliDailyPath()", "relativePath"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "join\\(config\\.vault,\\s*relativePath\\)",
+          "message": "Do not join CLI output directly under config.vault; confine it first."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "does not allow CLI paths outside the vault",
+          "message": "Add a regression test for unsafe CLI path output."
+        }
+      ]
+    },
+    {
+      "id": "docs-behavior-sync",
+      "severity": "medium",
+      "title": "Runtime behavior changes must be reflected in developer docs",
+      "appliesTo": {
+        "paths": ["src/note-writer.ts", "src/obsidian-cli.ts"],
+        "diffIncludesAny": [".obsidian/daily-notes.json", "fallback", "CLI"]
+      },
+      "checks": [
+        {
+          "type": "changedPathRegex",
+          "pattern": "^(CLAUDE\\.md|README\\.md|docs/.*\\.md)$",
+          "message": "Update docs when Daily Note path resolution order changes."
+        }
+      ]
+    },
+    {
+      "id": "format-token-validation",
+      "severity": "medium",
+      "title": "Date format token support must be explicit and tested",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["FORMAT_TOKEN_RE", "formatDailyNoteFileName", "format:"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "SUPPORTED_FORMAT_TOKENS",
+          "message": "Keep an explicit list of supported date format tokens."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "unsupported named tokens",
+          "message": "Test unsupported named tokens such as MMMM fallback to CLI."
+        },
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "includes\\(\"요\"\\)",
+          "message": "Avoid unreachable Korean-character checks on ASCII regex tokens."
+        }
+      ]
+    }
+  ]
+}
