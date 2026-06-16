@@ -362,6 +362,19 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(existsSync(dailyFilePath())).toBe(false);
   });
 
+  it("does not write a raw ## AgentLog note when the Obsidian CLI is disabled (exit 0 warning)", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-disabled");
+    const warning =
+      "Command line interface is not enabled. Please turn it on in Settings > General > Advanced.";
+    // Disabled CLI: every subcommand prints the warning and exits 0 without doing anything.
+    writeFileSync(mockBin, `#!/bin/bash\necho ${JSON.stringify(warning)}\nexit 0`, "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    expect(() => appendEntry(config, makeEntry(), TEST_DATE)).toThrow("Daily Note is missing");
+    expect(existsSync(dailyFilePath())).toBe(false);
+  });
+
   // N2: file with existing content — appends ## AgentLog at end
   it("appends ## AgentLog section to existing file without modifying existing content", () => {
     const filePath = writeDailyFile();

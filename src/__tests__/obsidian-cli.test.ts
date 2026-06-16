@@ -4,6 +4,7 @@ import {
   CLI_PROBE_TIMEOUT_MS,
   DAILY_BOOTSTRAP_TIMEOUT_MS,
   isVersionAtLeast,
+  isCliDisabledOutput,
   MIN_CLI_VERSION,
   resolveCliBin,
   cliDailyPath,
@@ -50,6 +51,31 @@ describe("isVersionAtLeast", () => {
   it("handles single-segment versions", () => {
     expect(isVersionAtLeast("2", "1")).toBe(true);
     expect(isVersionAtLeast("1", "2")).toBe(false);
+  });
+});
+
+describe("isCliDisabledOutput", () => {
+  it("detects the disabled-CLI warning in stdout", () => {
+    expect(
+      isCliDisabledOutput(
+        "Command line interface is not enabled. Please turn it on in Settings > General > Advanced."
+      )
+    ).toBe(true);
+  });
+
+  it("detects the warning regardless of surrounding noise/case", () => {
+    expect(
+      isCliDisabledOutput("Loading updated app package\nCOMMAND LINE INTERFACE IS NOT ENABLED.")
+    ).toBe(true);
+  });
+
+  it("returns false for a normal daily path", () => {
+    expect(isCliDisabledOutput("Daily/2026-06-16-화.md")).toBe(false);
+  });
+
+  it("returns false for empty/undefined output", () => {
+    expect(isCliDisabledOutput("")).toBe(false);
+    expect(isCliDisabledOutput(undefined)).toBe(false);
   });
 });
 
@@ -166,6 +192,19 @@ describe("cliDailyPath", () => {
     process.env.OBSIDIAN_BIN = mockBin;
     expect(cliDailyPath()).toBeNull();
   });
+
+  it("returns null when disabled CLI prints warning but exits 0", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-path-disabled");
+    writeFileSync(
+      mockBin,
+      '#!/bin/bash\necho "Command line interface is not enabled. Please turn it on in Settings > General > Advanced."\nexit 0',
+      "utf-8"
+    );
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliDailyPath()).toBeNull();
+  });
 });
 
 describe("cliEnsureDailyNoteExists", () => {
@@ -208,6 +247,32 @@ describe("cliEnsureDailyNoteExists", () => {
 
   it("returns false when CLI binary is not found", () => {
     process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    expect(cliEnsureDailyNoteExists()).toBe(false);
+  });
+
+  it("returns false when disabled CLI prints warning but exits 0 (stdout)", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-daily-disabled");
+    writeFileSync(
+      mockBin,
+      '#!/bin/bash\necho "Command line interface is not enabled. Please turn it on in Settings > General > Advanced."\nexit 0',
+      "utf-8"
+    );
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
+    expect(cliEnsureDailyNoteExists()).toBe(false);
+  });
+
+  it("returns false when disabled CLI prints warning to stderr but exits 0", () => {
+    const mockBin = join(tmpDir, "mock-obsidian-daily-disabled-stderr");
+    writeFileSync(
+      mockBin,
+      '#!/bin/bash\necho "Command line interface is not enabled. Please turn it on in Settings > General > Advanced." >&2\nexit 0',
+      "utf-8"
+    );
+    chmodSync(mockBin, 0o755);
+
+    process.env.OBSIDIAN_BIN = mockBin;
     expect(cliEnsureDailyNoteExists()).toBe(false);
   });
 });

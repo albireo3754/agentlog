@@ -26,6 +26,21 @@ type CliBinCacheState =
 /** Cached CLI resolution state for PATH/macos fallback lookup. */
 let _cachedBinState: CliBinCacheState = { status: "unresolved" };
 
+/**
+ * Detect the Obsidian "CLI disabled" warning. When the command line interface
+ * is turned off in Obsidian settings, commands like `daily`, `daily:path`, and
+ * `daily:read` print this warning to stdout/stderr while still exiting with
+ * status 0 — so exit status alone is not a reliable success signal.
+ *
+ * Matches Obsidian's English warning text only; a localized CLI message would
+ * not be detected. The CLI currently emits this string in English regardless of
+ * the app's display language.
+ */
+export function isCliDisabledOutput(output: string | undefined | null): boolean {
+  if (!output) return false;
+  return /command line interface is not enabled/i.test(output);
+}
+
 function envOverrideBin(): string | null {
   const raw = process.env.OBSIDIAN_BIN?.trim();
   return raw ? raw : null;
@@ -74,6 +89,7 @@ export function cliDailyPath(): string | null {
   if (!bin) return null;
   const result = spawnSync(bin, ["daily:path"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS });
   if (result.status !== 0) return null;
+  if (isCliDisabledOutput(result.stdout) || isCliDisabledOutput(result.stderr)) return null;
   // stdout may contain Electron noise lines (e.g. "Loading updated app package",
   // version warnings). The actual path is always the last non-empty line.
   const lines = result.stdout.trim().split("\n").filter(Boolean);
@@ -92,7 +108,10 @@ export function cliEnsureDailyNoteExists(): boolean {
   const bin = resolveCliBin();
   if (!bin) return false;
   const result = spawnSync(bin, ["daily"], { encoding: "utf-8", timeout: DAILY_BOOTSTRAP_TIMEOUT_MS });
-  return result.status === 0;
+  if (result.status !== 0) return false;
+  // A disabled CLI exits 0 while only printing a warning — never bootstraps the note.
+  if (isCliDisabledOutput(result.stdout) || isCliDisabledOutput(result.stderr)) return false;
+  return true;
 }
 
 /** Minimum Obsidian version that supports CLI */

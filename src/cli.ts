@@ -19,7 +19,7 @@ import { spawnSync } from "child_process";
 import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./config.js";
 import type { AgentLogConfig } from "./types.js";
 import { detectVaults, detectCli } from "./detect.js";
-import { isVersionAtLeast, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
+import { isVersionAtLeast, isCliDisabledOutput, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
 import { registerHook, unregisterHook, inspectClaudeHookState, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
 import {
   ask,
@@ -427,9 +427,13 @@ async function cmdDoctor(): Promise<void> {
     if (cliBinPath) {
       // 5a. CLI version + minimum version check
       const cliVer = spawnSync(cliBinPath, ["version"], { encoding: "utf-8", timeout: 3000 });
-      // stdout may contain warning lines before the version; take the last non-empty line
-      const version = cliVer.status === 0 ? (parseCliVersion(cliVer.stdout ?? "") ?? "") : "";
-      if (version) {
+      const cliVerDisabled = isCliDisabledOutput(cliVer.stdout) || isCliDisabledOutput(cliVer.stderr);
+      // stdout may contain warning lines before the version; take the last non-empty line.
+      // A disabled CLI emits only the warning, which must not be parsed as a version string.
+      const version = cliVer.status === 0 && !cliVerDisabled ? (parseCliVersion(cliVer.stdout ?? "") ?? "") : "";
+      if (cliVerDisabled) {
+        check("cli-ver", false, "CLI disabled in Obsidian settings", `Enable CLI in Obsidian ${MIN_CLI_VERSION}+ Settings > General > Command line interface`, true);
+      } else if (version) {
         const meetsMin = isVersionAtLeast(version, MIN_CLI_VERSION);
         check(
           "cli-ver",
@@ -442,20 +446,27 @@ async function cmdDoctor(): Promise<void> {
         check("cli-ver", false, "could not determine version", "Ensure Obsidian app is running", true);
       }
 
-      // 5b. CLI responsive (app running + can communicate)
+      // 5b. CLI responsive (app running + CLI enabled + can communicate).
+      // A disabled CLI exits 0 while only printing a warning, so status alone is not enough.
       const cliProbe = spawnSync(cliBinPath, ["daily:path"], { encoding: "utf-8", timeout: 3000 });
+      const cliDisabled = isCliDisabledOutput(cliProbe.stdout) || isCliDisabledOutput(cliProbe.stderr);
+      const cliResponsive = cliProbe.status === 0 && !cliDisabled;
       check(
         "cli-app",
-        cliProbe.status === 0,
-        cliProbe.status === 0 ? "responsive" : "app not responding",
-        "Start Obsidian app, or check CLI settings",
+        cliResponsive,
+        cliResponsive ? "responsive" : cliDisabled ? "CLI disabled in Obsidian settings" : "app not responding",
+        cliDisabled
+          ? `Enable CLI in Obsidian ${MIN_CLI_VERSION}+ Settings > General > Command line interface`
+          : "Start Obsidian app, or check CLI settings",
         true
       );
 
       // 5c. Daily note status (only when CLI is responsive)
-      if (cliProbe.status === 0) {
+      if (cliResponsive) {
         const dailyRead = spawnSync(cliBinPath, ["daily:read"], { encoding: "utf-8", timeout: 3000 });
-        const noteExists = dailyRead.status === 0 && (dailyRead.stdout ?? "").trim().length > 0;
+        const dailyDisabled = isCliDisabledOutput(dailyRead.stdout) || isCliDisabledOutput(dailyRead.stderr);
+        const noteExists =
+          dailyRead.status === 0 && !dailyDisabled && (dailyRead.stdout ?? "").trim().length > 0;
         check(
           "daily",
           noteExists,
@@ -542,11 +553,22 @@ async function cmdDoctor(): Promise<void> {
 }
 
 async function cmdOpen(): Promise<void> {
-  const proc = spawnSync("obsidian", ["daily"], {
+  // Resolve via the shared lookup so OBSIDIAN_BIN and the macOS app-bundle
+  // fallback work here too, instead of relying on `obsidian` being on PATH.
+  const cliBin = resolveCliBin();
+  if (!cliBin) {
+    console.error("Failed to open. Obsidian CLI not found.");
+    console.error(`  Enable CLI in Obsidian ${MIN_CLI_VERSION}+ Settings > General > Command line interface`);
+    process.exit(1);
+    return;
+  }
+  const proc = spawnSync(cliBin, ["daily"], {
     encoding: "utf-8",
     timeout: 5000,
   });
-  if (proc.status === 0) {
+  // A disabled CLI exits 0 while only printing a warning, so status alone is not success.
+  const disabled = isCliDisabledOutput(proc.stdout) || isCliDisabledOutput(proc.stderr);
+  if (proc.status === 0 && !disabled) {
     console.log("Opened today's Daily Note in Obsidian.");
   } else {
     console.error("Failed to open. Is Obsidian running with CLI enabled?");
