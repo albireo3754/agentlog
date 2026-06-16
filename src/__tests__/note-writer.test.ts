@@ -482,6 +482,52 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).not.toContain("claude_");
   });
 
+  // N5c: source differs but session id collides → insert a source-specific divider
+  // (Codex IDs can look UUID-like and collide with an existing claude_ id; must not be mislabeled.)
+  it("inserts a codex divider when source differs from an existing claude divider with the same id", () => {
+    const filePath = writeDailyFile();
+
+    const sharedId = "019abcde-1111-2222-3333-444455556666";
+    appendEntry(config, makeEntry({ time: "10:53", source: "claude", sessionId: sharedId }), TEST_DATE);
+    appendEntry(config, makeEntry({ time: "11:07", source: "codex", sessionId: sharedId }), TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain(`- - - - [[claude_${sharedId}]]`);
+    expect(content).toContain(`- - - - [[codex_${sharedId}]]`);
+    const dividerCount = (content.match(/- - - -/g) ?? []).length;
+    expect(dividerCount).toBe(2);
+  });
+
+  // N5d: legacy short claude divider must not absorb a codex entry whose id shares the 8-char prefix
+  it("does not file a codex entry under a legacy claude_ divider sharing the 8-char prefix", () => {
+    const filePath = dailyFilePath();
+    writeFileSync(
+      filePath,
+      [
+        "## AgentLog",
+        "> 🕐 10:53 — js/agentlog › 첫 번째 작업",
+        "",
+        "#### 10:53 · js/agentlog",
+        "<!-- cwd=/Users/pray/work/js/agentlog -->",
+        "- - - - [[claude_abc12345]]",
+        "- 10:53 첫 번째 작업",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    appendEntry(
+      config,
+      makeEntry({ time: "11:07", source: "codex", sessionId: "abc12345-def6-7890-abcd-ef1234567890", prompt: "codex 작업" }),
+      TEST_DATE
+    );
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain("- - - - [[codex_abc12345-def6-7890-abcd-ef1234567890]]");
+    const dividerCount = (content.match(/- - - -/g) ?? []).length;
+    expect(dividerCount).toBe(2);
+  });
+
   // N6: different projects → separate #### sections
   it("creates separate sections for different projects", () => {
     const filePath = writeDailyFile();

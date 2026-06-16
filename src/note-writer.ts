@@ -201,8 +201,10 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
   const metaRe = /^<!-- cwd=(.+?) -->$/;
   const legacyMetaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
   const legacyHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=([\w-]+) -->$/;
-  // Match current [[claude_...]]/[[codex_...]] and legacy [[ses_...]]/(ses_...) dividers
-  const dividerRe = /^- - - - (?:\[\[(?:claude|codex|ses)_([\w-]+)\]\]|\(ses_([\w-]+)\))$/;
+  // Match current [[claude_...]]/[[codex_...]] and legacy [[ses_...]]/(ses_...) dividers.
+  // Captures the source prefix so session matching stays source-aware: a codex entry
+  // must never be filed under a claude_ divider (or vice versa) even when the ids collide.
+  const dividerRe = /^- - - - (?:\[\[(claude|codex|ses)_([\w-]+)\]\]|\((ses)_([\w-]+)\))$/;
 
   let projectIdx = -1;
   let projectMetaIdx = -1; // -1 means legacy inline format (no separate metadata line)
@@ -280,16 +282,24 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
       insertAt--;
     }
 
-    // Determine current session from the last divider in this subsection.
+    // Determine current session + source from the last divider in this subsection.
     // Falls back to legacySes (from old metadata format) if no dividers found.
     let currentSes = "";
+    let currentSource = ""; // "claude" | "codex" | "ses" (legacy, source-agnostic) | ""
     for (let i = firstContentIdx; i < subsectionEnd; i++) {
       const m = lines[i].match(dividerRe);
-      if (m) currentSes = m[1] ?? m[2];
+      if (m) {
+        currentSource = m[1] ?? m[3];
+        currentSes = m[2] ?? m[4];
+      }
     }
     if (!currentSes) currentSes = legacySes;
 
-    const sameSession = currentSes === entry.sessionId || currentSes === entry.sessionId.slice(0, 8);
+    const idMatches = currentSes === entry.sessionId || currentSes === entry.sessionId.slice(0, 8);
+    // Legacy dividers ("ses") and metadata-only fallbacks ("") carry no source, so treat them
+    // as matching any source to preserve backward-compatible grouping.
+    const sourceMatches = currentSource === "" || currentSource === "ses" || currentSource === entry.source;
+    const sameSession = idMatches && sourceMatches;
 
     if (!sameSession) {
       // Session changed: insert divider + entry.
