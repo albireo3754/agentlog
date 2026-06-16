@@ -553,7 +553,16 @@ async function cmdDoctor(): Promise<void> {
 }
 
 async function cmdOpen(): Promise<void> {
-  const proc = spawnSync("obsidian", ["daily"], {
+  // Resolve via the shared lookup so OBSIDIAN_BIN and the macOS app-bundle
+  // fallback work here too, instead of relying on `obsidian` being on PATH.
+  const cliBin = resolveCliBin();
+  if (!cliBin) {
+    console.error("Failed to open. Obsidian CLI not found.");
+    console.error(`  Enable CLI in Obsidian ${MIN_CLI_VERSION}+ Settings > General > Command line interface`);
+    process.exit(1);
+    return;
+  }
+  const proc = spawnSync(cliBin, ["daily"], {
     encoding: "utf-8",
     timeout: 5000,
   });
