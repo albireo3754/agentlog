@@ -23,7 +23,7 @@ agentlog init --all ~/path/to/vault    # Both
 agentlog init --plain ~/notes          # Plain folder (no Obsidian)
 ```
 
-`init` writes `~/.agentlog/config.json` and registers the hook in `~/.claude/settings.json` (Claude) or `~/.codex/config.toml` (Codex). The `agentlog` binary must remain in PATH after setup.
+`init` writes `~/.agentlog/config.json` and registers the hook in `~/.claude/settings.json` (Claude) or `~/.codex/hooks.json` (Codex). The `agentlog` binary must remain in PATH after setup.
 
 Run without arguments for interactive vault auto-detection.
 
@@ -71,6 +71,8 @@ agentlog codex-notify (internal — called by Codex, not by users)
 {
   "vault": "/Users/you/Obsidian",
   "plain": false,
+  "claudeHookInstalled": true,
+  "codexHookInstalled": true,
   "codexNotifyRestore": null
 }
 ```
@@ -78,10 +80,14 @@ agentlog codex-notify (internal — called by Codex, not by users)
 Fields:
 - `vault` (required): absolute path to Obsidian vault or plain folder
 - `plain` (optional): if true, writes simple YYYY-MM-DD.md files
+- `claudeHookInstalled` (optional): marks that AgentLog expects the Claude hook to be installed
+- `codexHookInstalled` (optional): marks that AgentLog expects the Codex hook to be installed
 - `codexNotifyRestore` (optional): saved previous Codex notify value, restored on uninstall
+- `englishAsk` (optional): Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true. Results append under `## EnglishAsk`.
 
 Environment variables:
 - `AGENTLOG_CONFIG_DIR`: override config directory (default: `~/.agentlog`)
+- `AGENTLOG_ENGLISHASK_EVAL`: internal guard that skips EnglishAsk evaluator child notify turns
 - `AGENTLOG_PHASE`: force channel `dev` or `prod`
 - `OBSIDIAN_BIN`: override Obsidian CLI binary path
 
@@ -95,10 +101,10 @@ Obsidian mode appends to a `## AgentLog` section, grouped by working directory:
 
 #### 10:53 · js/agentlog
 <!-- cwd=/Users/you/work/js/agentlog -->
-- - - - [[claude_a1b2c3d4]]
+- - - - [[claude_a1b2c3d4-1111-2222-3333-444455556666]]
 - 10:53 start building agentlog
 - 11:07 open the spec document
-- - - - [[claude_e5f6a7b8]]
+- - - - [[claude_e5f6a7b8-1111-2222-3333-444455556666]]
 - 11:21 initialize git
 ```
 
@@ -110,12 +116,14 @@ Plain mode appends to `{folder}/YYYY-MM-DD.md`:
 ```
 
 Daily Note path resolution order:
-1. `obsidian daily:path` (Obsidian CLI 1.12.4+, app must be running)
-2. Fallback: `{vault}/Daily/YYYY-MM-DD-<weekday>.md`
+1. `.obsidian/daily-notes.json` when it contains a supported in-vault folder/format
+2. `obsidian daily:path` (Obsidian CLI 1.12.4+, app must be running)
+
+In Obsidian mode, missing Daily Notes are bootstrapped with `obsidian daily` before AgentLog writes so user templates are preserved. AgentLog does not create a guessed `{vault}/Daily/...` fallback file when no safe path or bootstrap is available. Plain mode still writes directly to `{dir}/YYYY-MM-DD.md`.
 
 ## How the Hook Works
 
-Claude Code fires `UserPromptSubmit` with JSON on stdin containing `prompt`, `session_id`, and `cwd`. AgentLog sanitizes the prompt, resolves the Daily Note path, and appends the entry. Fails silently — never interrupts Claude Code. Total overhead: under 50ms per prompt.
+Claude Code fires `UserPromptSubmit` with JSON on stdin containing `prompt`, `session_id`, and `cwd`. AgentLog sanitizes the prompt, resolves the Daily Note path, and appends the entry. Fails silently — never interrupts Claude Code. Steady-state overhead is under 50ms when the Daily Note already exists; missing-note bootstrap depends on Obsidian CLI startup.
 
 Codex fires `agent-turn-complete` notify. Entries are logged when the turn completes (not at prompt submission time).
 

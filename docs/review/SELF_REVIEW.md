@@ -73,6 +73,44 @@ Good evidence:
 - mock script with `touch <sentinel>`
 - assertion such as `expect(existsSync(sentinel)).toBe(false)`
 
+### Integration Uninstall and Migration Cleanup
+
+Install/uninstall paths mutate user-level integration files. Treat those files as external input and keep migration-era side effects explicit.
+
+Check:
+
+- Uninstall paths catch invalid or unsupported external config, such as malformed Codex `hooks.json`, and exit with a single clear message instead of a stack trace.
+- User-facing uninstall output distinguishes restoring a previous command from removing an AgentLog-owned legacy entry.
+- Docs and CLI help mention both current integration cleanup and legacy migration cleanup when a command performs both.
+
+Good evidence:
+
+- tests for invalid `hooks.json` during `uninstall --codex`
+- tests for legacy notify removal when no restore command exists
+- docs that mention legacy `notify` cleanup for Codex uninstall
+
+### Claude Hook Matcher Compatibility
+
+Claude Code validates hook entries in `~/.claude/settings.json`. The `matcher` field must stay a string; stale object matchers can make the whole settings file invalid.
+
+Check:
+
+- AgentLog's `HOOK_ENTRY` uses `matcher: ""`, not an object matcher.
+- `agentlog init` removes AgentLog-owned stale hook entries before writing the canonical hook.
+- `agentlog doctor` and `agentlog validate` fail when the registered AgentLog hook has an unsupported matcher shape.
+- `agentlog doctor` downgrades a missing Claude hook to warn-only only for Codex-only installs; `--all` installs must still fail if the Claude hook is missing.
+- The migration preserves unrelated hook entries.
+- Docs that show the Claude hook settings example use the string matcher format.
+
+Good evidence:
+
+- a validator such as `inspectClaudeHookState()` reports unsupported Claude settings shapes
+- config metadata such as `claudeHookInstalled` distinguishes Codex-only installs from both-hook installs
+- tests for stale AgentLog object matcher migration
+- tests for doctor failure when `matcher` is an object
+- tests for doctor failure when both hooks are expected but the Claude hook is missing
+- hook integration docs showing `"matcher": ""`
+
 ### Docs Sync
 
 When runtime fallback order or behavior changes, developer docs must say the same thing.
@@ -82,6 +120,81 @@ Check:
 - Docs describe `.obsidian/daily-notes.json` before CLI fallback if that is runtime behavior.
 - Old statements like "always uses Obsidian CLI" are removed or qualified.
 - README/CLAUDE/docs are updated only when they are in scope.
+
+### Daily Bootstrap Safety
+
+`obsidian daily:path` resolves a path; it does not create the Daily Note or apply the user's template.
+
+Check:
+
+- Missing Daily Notes in Obsidian mode are created through `obsidian daily` before AgentLog writes.
+- AgentLog re-checks that the resolved file exists after CLI bootstrap before reading or writing.
+- The `obsidian daily` bootstrap path has a longer timeout than lightweight probes such as `daily:path`, because it may start or wake Obsidian.
+- Non-plain mode does not create a guessed `{vault}/Daily/...` fallback when no safe path source is available.
+- Plain mode remains direct-file append and is not accidentally routed through Obsidian CLI.
+- Tests prove template content created by the bootstrap is preserved after AgentLog merges `## AgentLog`.
+- Tests prove CLI-unavailable/bootstrap-failure cases do not create raw Daily files.
+
+Good evidence:
+
+- `cliEnsureDailyNoteExists()` calls `obsidian daily`.
+- tests or constants prove Daily bootstrap timeout is greater than the probe timeout.
+- `appendEntry()` aborts missing-note writes when path resolution or CLI bootstrap cannot be confirmed.
+- Regression tests for missing-note bootstrap, no guessed fallback, and bootstrap failure.
+
+### CLI Layering
+
+`src/cli.ts` should stay the command edge, not the home for reusable application support.
+
+Check:
+
+- Commander registration stays in `src/cli.ts`.
+- Shared support such as prompt asking, vault validation, config merge, binary lookup, and repeated status formatting stays outside `src/cli.ts`, regardless of whether it would be written as `function`, `const`, or `export const`.
+- External integrations remain behind adapter modules such as `claude-settings`, `codex-hooks`, `codex-settings`, and `obsidian-cli`.
+- Architecture docs are updated when a new CLI layer or module boundary is introduced.
+
+Good evidence:
+
+- `src/cli-shared.ts` owns reusable CLI support helpers.
+- `docs/architecture/cli-layering.md` explains the current layer map and next safe cuts.
+- targeted CLI tests pass after moving code across module boundaries.
+
+### Session Link Fidelity
+
+Session links written to Daily Notes should preserve the full session id unless reading legacy data.
+
+Check:
+
+- New `[[claude_...]]`, `[[codex_...]]`, and EnglishAsk session links use full `sessionId`.
+- Truncation such as `sessionId.slice(0, 8)` remains only in legacy matching compatibility, not in new output builders.
+- Docs examples do not show short 6-8 character source-prefixed session links as the current output.
+
+Good evidence:
+
+- tests for full UUID-like session links in Claude and Codex dividers
+- tests showing legacy short dividers still match the current session without rewriting old notes
+
+### Evaluator Hooks
+
+Any evaluator launched from a hook or notify path must be fail-soft and non-recursive.
+
+Check:
+
+- Child evaluator runs set an env guard before invoking Codex or other agent tooling.
+- The notify/hook path checks that guard before reading stdin, normal writes, and forwarding, then skips evaluator child turns entirely.
+- Notify payload `cwd` can be stale or unavailable on CI/another machine; evaluator cwd must fall back safely.
+- Evaluator failure, non-zero exit, timeout, and feedback append failures cannot prevent the normal AgentLog write or surface as generic notify errors.
+- Evaluators receive the raw user prompt for semantic review; display-only formatting such as `prettyPrompt(...)` is used only for Daily Note entries.
+- Prompts and evaluator output are redacted and bounded before storage.
+- Stored prompt metadata is flattened before being written as a Markdown list item.
+- Stored evaluator feedback cannot break out of its Markdown code fence.
+- New feedback is inserted inside the existing `## EnglishAsk` section, before the next top-level heading, including when the next heading immediately follows the section header.
+
+Good evidence:
+
+- env guard such as `AGENTLOG_ENGLISHASK_EVAL`
+- tests for guarded notify no-write/no-forward, raw evaluator input vs display prompt, missing cwd fallback, evaluator failure, timeout, append failure, prompt flattening, feedback fence safety, and existing-section insertion
+- config defaults that keep evaluator features off unless explicitly enabled
 
 ### Plan and Design Contract Drift
 

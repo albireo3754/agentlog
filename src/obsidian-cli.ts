@@ -12,6 +12,12 @@ const MACOS_CLI_PATHS = [
   "/Applications/Obsidian.app/Contents/MacOS/obsidian",
 ];
 
+/** Timeout for lightweight CLI probes such as `which`, `version`, and `daily:path`. */
+export const CLI_PROBE_TIMEOUT_MS = 3000;
+
+/** Missing-note bootstrap can start or wake Obsidian, so it gets a longer timeout. */
+export const DAILY_BOOTSTRAP_TIMEOUT_MS = 10000;
+
 type CliBinCacheState =
   | { status: "unresolved" }
   | { status: "resolved"; bin: string }
@@ -19,6 +25,21 @@ type CliBinCacheState =
 
 /** Cached CLI resolution state for PATH/macos fallback lookup. */
 let _cachedBinState: CliBinCacheState = { status: "unresolved" };
+
+/**
+ * Detect the Obsidian "CLI disabled" warning. When the command line interface
+ * is turned off in Obsidian settings, commands like `daily`, `daily:path`, and
+ * `daily:read` print this warning to stdout/stderr while still exiting with
+ * status 0 — so exit status alone is not a reliable success signal.
+ *
+ * Matches Obsidian's English warning text only; a localized CLI message would
+ * not be detected. The CLI currently emits this string in English regardless of
+ * the app's display language.
+ */
+export function isCliDisabledOutput(output: string | undefined | null): boolean {
+  if (!output) return false;
+  return /command line interface is not enabled/i.test(output);
+}
 
 function envOverrideBin(): string | null {
   const raw = process.env.OBSIDIAN_BIN?.trim();
@@ -39,7 +60,7 @@ export function resolveCliBin(): string | null {
   if (_cachedBinState.status === "resolved") return _cachedBinState.bin;
   if (_cachedBinState.status === "not-found") return null;
 
-  const which = spawnSync("which", ["obsidian"], { encoding: "utf-8", timeout: 3000 });
+  const which = spawnSync("which", ["obsidian"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS });
   if (which.status === 0 && which.stdout.trim()) {
     _cachedBinState = { status: "resolved", bin: which.stdout.trim() };
     return _cachedBinState.bin;
@@ -66,8 +87,9 @@ export function resolveCliBin(): string | null {
 export function cliDailyPath(): string | null {
   const bin = resolveCliBin();
   if (!bin) return null;
-  const result = spawnSync(bin, ["daily:path"], { encoding: "utf-8", timeout: 3000 });
+  const result = spawnSync(bin, ["daily:path"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS });
   if (result.status !== 0) return null;
+  if (isCliDisabledOutput(result.stdout) || isCliDisabledOutput(result.stderr)) return null;
   // stdout may contain Electron noise lines (e.g. "Loading updated app package",
   // version warnings). The actual path is always the last non-empty line.
   const lines = result.stdout.trim().split("\n").filter(Boolean);
@@ -76,6 +98,20 @@ export function cliDailyPath(): string | null {
   // "2026-03-24 04:27:38 App is up to date." being used as a filename.
   if (!path.endsWith(".md")) return null;
   return path || null;
+}
+
+/**
+ * Ask Obsidian to create/open today's Daily Note through its official flow.
+ * This lets Obsidian apply the user's Daily Notes template before AgentLog writes.
+ */
+export function cliEnsureDailyNoteExists(): boolean {
+  const bin = resolveCliBin();
+  if (!bin) return false;
+  const result = spawnSync(bin, ["daily"], { encoding: "utf-8", timeout: DAILY_BOOTSTRAP_TIMEOUT_MS });
+  if (result.status !== 0) return false;
+  // A disabled CLI exits 0 while only printing a warning — never bootstraps the note.
+  if (isCliDisabledOutput(result.stdout) || isCliDisabledOutput(result.stderr)) return false;
+  return true;
 }
 
 /** Minimum Obsidian version that supports CLI */

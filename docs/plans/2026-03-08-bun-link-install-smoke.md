@@ -1,5 +1,11 @@
 # Bun Link Install Smoke Test Implementation Plan
 
+> Superseded: Codex integration now uses the `UserPromptSubmit` hook in
+> `~/.codex/hooks.json` (`agentlog hook --source codex`) instead of the legacy
+> `notify` command path. Use `docs/codex-hook-spec.md` as the current source of
+> truth for Codex hook install behavior. The original plan below is retained as
+> historical context only.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** `bun link` 이후 실제 전역 `agentlog` 명령이 설치되고, `init --codex` 중심 설치 흐름이 격리된 환경에서 자동 검증되도록 한다.

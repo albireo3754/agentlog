@@ -136,7 +136,8 @@ describe("cli init command", () => {
     expect(Array.isArray(settings.hooks.UserPromptSubmit)).toBe(true);
 
     const hasHook = settings.hooks.UserPromptSubmit.some(
-      (entry: { hooks?: Array<{ command?: string }> }) =>
+      (entry: { matcher?: unknown; hooks?: Array<{ command?: string }> }) =>
+        entry.matcher === "" &&
         Array.isArray(entry.hooks) &&
         entry.hooks.some((h) => h.command === "agentlog hook")
     );
@@ -164,6 +165,45 @@ describe("cli init command", () => {
     expect(settings.theme).toBe("dark");
     expect(settings.model).toBe("sonnet");
     expect(settings.hooks).toBeDefined();
+  });
+
+  it("migrates a stale AgentLog hook matcher object to the Claude string matcher format", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            {
+              matcher: { tools: ["UserPromptSubmit"] },
+              hooks: [{ type: "command", command: "agentlog hook" }],
+            },
+            {
+              matcher: "keep",
+              hooks: [{ type: "command", command: "echo keep" }],
+            },
+          ],
+        },
+      }),
+      "utf-8"
+    );
+
+    const { exitCode } = await runCli(["init", vault], { HOME: tmpHome });
+
+    expect(exitCode).toBe(0);
+    const settings = JSON.parse(readFileSync(join(tmpHome, ".claude", "settings.json"), "utf-8"));
+    expect(settings.hooks.UserPromptSubmit).toEqual([
+      {
+        matcher: "keep",
+        hooks: [{ type: "command", command: "echo keep" }],
+      },
+      {
+        matcher: "",
+        hooks: [{ type: "command", command: "agentlog hook" }],
+      },
+    ]);
   });
 
   // CL8: init expands ~/
@@ -296,6 +336,39 @@ describe("cli doctor command", () => {
     // obsidian line should not appear when plain mode
     expect(stdout).not.toContain("obsidian");
   });
+
+  it("exits 1 when the registered AgentLog hook uses a stale object matcher", async () => {
+    const notes = join(tmpHome, "notes");
+    mkdirSync(notes, { recursive: true });
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault: notes, plain: true }),
+      "utf-8"
+    );
+    mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            {
+              matcher: { tools: ["UserPromptSubmit"] },
+              hooks: [{ type: "command", command: "agentlog hook" }],
+            },
+          ],
+        },
+      }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["doctor"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("hook");
+    expect(stdout).toContain("matcher must be a string");
+    expect(stdout).toContain("agentlog init");
+  });
 });
 
 describe("cli codex-debug command", () => {
@@ -360,6 +433,25 @@ printf '%s\n' "$@" > "${argsFile}"
 
     expect(exitCode).toBe(1);
     expect(stderr).toContain("prompt is required");
+  });
+
+  it("exits cleanly when Codex hook registration cannot parse hooks.json", async () => {
+    const binDir = join(tmpHome, "bin");
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(join(binDir, "codex"), "#!/bin/sh\nexit 0\n", "utf-8");
+    Bun.spawnSync(["chmod", "+x", join(binDir, "codex")]);
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeFileSync(join(tmpHome, ".codex", "hooks.json"), "{bad", "utf-8");
+
+    const { stdout, stderr, exitCode } = await runCli(["codex-debug", "hello"], {
+      HOME: tmpHome,
+      PATH: `${binDir}:${process.env.PATH ?? ""}`,
+    });
+
+    expect(exitCode).toBe(1);
+    expect(stdout + stderr).toContain("hooks.json is invalid JSON");
+    expect(stdout + stderr).not.toContain("error: script");
+    expect(stdout + stderr).not.toContain("at ");
   });
 });
 
@@ -525,6 +617,38 @@ describe("cli validate", () => {
 
     expect(exitCode).toBe(1);
     expect(stdout).toContain("hook: fail");
+  });
+
+  it("exits 1 with hook: fail when the registered hook matcher is unsupported", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    mkdirSync(join(tmpHome, ".agentlog"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".agentlog", "config.json"),
+      JSON.stringify({ vault }),
+      "utf-8"
+    );
+    mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            {
+              matcher: { tools: ["UserPromptSubmit"] },
+              hooks: [{ type: "command", command: "agentlog hook" }],
+            },
+          ],
+        },
+      }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["validate"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stdout).toContain("hook: fail");
+    expect(stdout).toContain("matcher must be a string");
   });
 });
 

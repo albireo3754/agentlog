@@ -1,7 +1,8 @@
 /**
  * Hook Input Schema — Source of Truth
  *
- * Claude Code sends this JSON payload via stdin when a UserPromptSubmit hook fires.
+ * Claude Code and Codex send this JSON payload via stdin when a
+ * UserPromptSubmit hook fires.
  * All fields are validated at runtime by parseHookInput().
  */
 
@@ -17,24 +18,28 @@ export interface HookInputMessage {
 }
 
 /**
- * Full UserPromptSubmit hook payload from Claude Code.
+ * Full UserPromptSubmit hook payload.
  *
  * Required fields: hook_event_name, session_id, cwd
- * Prompt is sourced from `prompt` (preferred) or `message.content` fallback.
+ * Codex requires `prompt`. Claude compatibility keeps older fallback shapes.
  */
 export interface HookInput {
   hook_event_name: "UserPromptSubmit";
   session_id: string;
   cwd: string;
   /** Path to the session transcript JSONL file */
-  transcript_path?: string;
-  /** Claude Code permission mode (e.g. "default", "acceptEdits") */
+  transcript_path?: string | null;
+  /** Codex/Claude permission mode (e.g. "default", "acceptEdits") */
   permission_mode?: string;
-  /** Direct prompt text — preferred source */
+  /** Codex-specific active model slug */
+  model?: string;
+  /** Codex-specific active turn id */
+  turn_id?: string;
+  /** Direct prompt text — required for Codex, preferred for Claude */
   prompt?: string;
-  /** Nested message object — fallback if prompt is absent */
+  /** Claude/backward-compatibility fallback if prompt is absent */
   message?: HookInputMessage;
-  /** Structured content parts — secondary fallback */
+  /** Claude/backward-compatibility fallback if prompt and message are absent */
   parts?: HookInputPart[];
 }
 
@@ -45,17 +50,24 @@ export interface ParsedHookInput {
   prompt: string;
 }
 
+export interface ParseHookInputOptions {
+  source?: "claude" | "codex";
+}
+
 /**
  * Parse and validate raw hook stdin JSON.
  *
- * Prompt extraction priority:
+ * Codex extraction:
+ *   1. input.prompt (required by Codex UserPromptSubmit)
+ *
+ * Claude/backward-compatibility extraction priority:
  *   1. input.prompt
  *   2. input.message.content
  *   3. input.parts[0].text (first text part)
  *
  * @throws {Error} if JSON is invalid or required fields are missing
  */
-export function parseHookInput(raw: string): ParsedHookInput {
+export function parseHookInput(raw: string, options: ParseHookInputOptions = {}): ParsedHookInput {
   let input: unknown;
   try {
     input = JSON.parse(raw);
@@ -69,6 +81,9 @@ export function parseHookInput(raw: string): ParsedHookInput {
 
   const obj = input as Record<string, unknown>;
 
+  if (obj["hook_event_name"] !== "UserPromptSubmit") {
+    throw new Error("Missing or unsupported hook_event_name: UserPromptSubmit");
+  }
   if (typeof obj["session_id"] !== "string" || !obj["session_id"]) {
     throw new Error("Missing required field: session_id");
   }
@@ -81,6 +96,8 @@ export function parseHookInput(raw: string): ParsedHookInput {
 
   if (typeof obj["prompt"] === "string" && obj["prompt"]) {
     prompt = obj["prompt"];
+  } else if (options.source === "codex") {
+    throw new Error("Missing required field for Codex UserPromptSubmit: prompt");
   } else if (
     typeof obj["message"] === "object" &&
     obj["message"] !== null &&

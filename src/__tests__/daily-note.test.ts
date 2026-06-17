@@ -70,15 +70,21 @@ describe("buildAgentLogEntry", () => {
 
 describe("buildSessionDivider", () => {
   it("returns divider with claude prefix by default", () => {
-    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890")).toBe("- - - - [[claude_abc12345]]");
+    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890")).toBe(
+      "- - - - [[claude_abc12345-def6-7890-abcd-ef1234567890]]"
+    );
   });
 
   it("returns divider with claude prefix when source is claude", () => {
-    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890", "claude")).toBe("- - - - [[claude_abc12345]]");
+    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890", "claude")).toBe(
+      "- - - - [[claude_abc12345-def6-7890-abcd-ef1234567890]]"
+    );
   });
 
   it("returns divider with codex prefix when source is codex", () => {
-    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890", "codex")).toBe("- - - - [[codex_abc12345]]");
+    expect(buildSessionDivider("abc12345-def6-7890-abcd-ef1234567890", "codex")).toBe(
+      "- - - - [[codex_abc12345-def6-7890-abcd-ef1234567890]]"
+    );
   });
 
   it("uses full sessionId when shorter than 8 chars", () => {

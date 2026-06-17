@@ -10,7 +10,7 @@ import {
   buildProjectHeader,
   buildProjectMetadata,
 } from "./schema/daily-note.js";
-import { cliDailyPath } from "./obsidian-cli.js";
+import { cliDailyPath, cliEnsureDailyNoteExists } from "./obsidian-cli.js";
 
 type DailyNotesConfig = {
   folder?: string;
@@ -87,8 +87,8 @@ function pad2(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-/** Returns daily note file path for a given date. */
-export function dailyNotePath(config: AgentLogConfig, date: Date): string {
+/** Returns daily note file path for a given date, or null when non-plain mode has no safe path source. */
+export function dailyNotePath(config: AgentLogConfig, date: Date): string | null {
   if (config.plain) {
     const yyyy = date.getFullYear();
     const mm = pad2(date.getMonth() + 1);
@@ -105,8 +105,7 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string {
   const cliPath = relativePath ? safeVaultJoin(config.vault, relativePath) : null;
   if (cliPath) return cliPath;
 
-  // Fallback: hardcoded {vault}/Daily/
-  return join(config.vault, "Daily", dailyNoteFileName(date));
+  return null;
 }
 
 /**
@@ -124,6 +123,9 @@ export function appendEntry(
   date: Date = new Date()
 ): WriteResult {
   const filePath = dailyNotePath(config, date);
+  if (!filePath) {
+    throw new Error("Daily Note path could not be resolved. Enable the Obsidian CLI or configure Daily Notes settings.");
+  }
 
   if (config.plain) {
     return appendPlain(filePath, entry, date);
@@ -131,10 +133,15 @@ export function appendEntry(
 
   const created = !existsSync(filePath);
   if (created) {
-    mkdirSync(dirname(filePath), { recursive: true });
+    if (!cliEnsureDailyNoteExists()) {
+      throw new Error("Daily Note is missing and Obsidian CLI could not create it.");
+    }
+    if (!existsSync(filePath)) {
+      throw new Error("Daily Note is missing after Obsidian CLI bootstrap.");
+    }
   }
 
-  const content = created ? "" : readFileSync(filePath, "utf-8");
+  const content = readFileSync(filePath, "utf-8");
   const newContent = insertIntoAgentLogSection(content, entry);
   writeFileSync(filePath, newContent, "utf-8");
   return { filePath, created, section: "agentlog" };
@@ -147,13 +154,12 @@ export function appendEntry(
  *   ## AgentLog
  *   > 🕐 HH:MM — project › prompt        ← latest entry (always updated)
  *
- *   #### project · HH:MM                  ← one section per cwd
+ *   #### HH:MM · project                  ← one section per cwd
  *   - HH:MM entry
- *   - - - - [[claude_XXXXXXXX]]          ← divider when session changes
+ *   - - - - [[claude_<session_id>]]      ← divider when session changes
  *   - HH:MM entry
  */
 function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
-  const sessionShort = entry.sessionId.slice(0, 8);
   const entryLine = buildAgentLogEntry(entry.time, entry.prompt);
   const latestLine = buildLatestLine(entry.time, entry.project, entry.prompt);
 
@@ -195,8 +201,10 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
   const metaRe = /^<!-- cwd=(.+?) -->$/;
   const legacyMetaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
   const legacyHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=([\w-]+) -->$/;
-  // Match current [[claude_...]]/[[codex_...]] and legacy [[ses_...]]/(ses_...) dividers
-  const dividerRe = /^- - - - (?:\[\[(?:claude|codex|ses)_([\w-]+)\]\]|\(ses_([\w-]+)\))$/;
+  // Match current [[claude_...]]/[[codex_...]] and legacy [[ses_...]]/(ses_...) dividers.
+  // Captures the source prefix so session matching stays source-aware: a codex entry
+  // must never be filed under a claude_ divider (or vice versa) even when the ids collide.
+  const dividerRe = /^- - - - (?:\[\[(claude|codex|ses)_([\w-]+)\]\]|\((ses)_([\w-]+)\))$/;
 
   let projectIdx = -1;
   let projectMetaIdx = -1; // -1 means legacy inline format (no separate metadata line)
@@ -274,16 +282,26 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
       insertAt--;
     }
 
-    // Determine current session from the last divider in this subsection.
+    // Determine current session + source from the last divider in this subsection.
     // Falls back to legacySes (from old metadata format) if no dividers found.
     let currentSes = "";
+    let currentSource = ""; // "claude" | "codex" | "ses" (legacy, source-agnostic) | ""
     for (let i = firstContentIdx; i < subsectionEnd; i++) {
       const m = lines[i].match(dividerRe);
-      if (m) currentSes = m[1] ?? m[2];
+      if (m) {
+        currentSource = m[1] ?? m[3];
+        currentSes = m[2] ?? m[4];
+      }
     }
     if (!currentSes) currentSes = legacySes;
 
-    if (currentSes !== sessionShort) {
+    const idMatches = currentSes === entry.sessionId || currentSes === entry.sessionId.slice(0, 8);
+    // Legacy dividers ("ses") and metadata-only fallbacks ("") carry no source, so treat them
+    // as matching any source to preserve backward-compatible grouping.
+    const sourceMatches = currentSource === "" || currentSource === "ses" || currentSource === entry.source;
+    const sameSession = idMatches && sourceMatches;
+
+    if (!sameSession) {
       // Session changed: insert divider + entry.
       lines.splice(insertAt, 0, buildSessionDivider(entry.sessionId, entry.source), entryLine);
       // Migrate legacy metadata format to new format (remove ses=).

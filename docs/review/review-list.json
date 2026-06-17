@@ -105,19 +105,95 @@
       ]
     },
     {
+      "id": "daily-bootstrap-safe-creation",
+      "severity": "high",
+      "title": "Missing Obsidian Daily Notes must be bootstrapped through the CLI",
+      "appliesTo": {
+        "paths": ["src/note-writer.ts", "src/obsidian-cli.ts", "src/__tests__/note-writer.test.ts", "README.md", "AGENTS.md", "llms.txt", "docs/**/*.md"],
+        "diffIncludesAny": ["dailyNotePath", "cliEnsureDailyNoteExists", "daily:path", "Daily Note", "bootstrap"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/obsidian-cli.ts"],
+          "pattern": "function\\s+cliEnsureDailyNoteExists[\\s\\S]*\\[\"daily\"\\]",
+          "message": "Add an Obsidian CLI bootstrap helper that runs `obsidian daily`, not only `daily:path`."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/obsidian-cli.ts"],
+          "pattern": "DAILY_BOOTSTRAP_TIMEOUT_MS[\\s\\S]*CLI_PROBE_TIMEOUT_MS|CLI_PROBE_TIMEOUT_MS[\\s\\S]*DAILY_BOOTSTRAP_TIMEOUT_MS",
+          "message": "Keep a distinct longer timeout for `obsidian daily` bootstrap than for lightweight CLI probes."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/obsidian-cli.test.ts"],
+          "pattern": "DAILY_BOOTSTRAP_TIMEOUT_MS\\)\\.toBeGreaterThan\\(CLI_PROBE_TIMEOUT_MS",
+          "message": "Test that Daily bootstrap timeout stays longer than lightweight probe timeout."
+        },
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/note-writer.ts"],
+          "pattern": "return\\s+join\\(config\\.vault,\\s*\"Daily\",\\s*dailyNoteFileName\\(",
+          "message": "Do not create a guessed `{vault}/Daily/...` fallback in Obsidian mode when no safe path source is available."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/note-writer.test.ts"],
+          "pattern": "bootstraps a missing Daily Note through Obsidian before appending",
+          "message": "Add a regression test proving missing notes are created through Obsidian before AgentLog writes."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/note-writer.test.ts"],
+          "pattern": "does not create a guessed fallback file when no safe path resolves",
+          "message": "Add a regression test proving unsafe fallback creation is skipped."
+        }
+      ]
+    },
+    {
+      "id": "cli-command-edge-thin",
+      "severity": "medium",
+      "title": "CLI command edge should not re-accumulate shared helpers",
+      "appliesTo": {
+        "paths": ["src/cli.ts", "src/cli-shared.ts", "docs/architecture/**/*.md"],
+        "diffIncludesAny": ["validateVault", "detectBinary", "printObsidianCliStatus", "cli-shared", "Command edge"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/cli.ts"],
+          "pattern": "(?:function\\s+|(?:export\\s+)?const\\s+)(?:validateVault|validateVaultOrExit|saveMergedConfig|printSavedConfig|printObsidianCliStatus|detectBinary)\\b",
+          "message": "Keep reusable CLI support helpers out of `src/cli.ts`; put them in `src/cli-shared.ts` or a narrower application module."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["docs/architecture/cli-layering.md"],
+          "pattern": "Command edge[\\s\\S]*src/cli\\.ts[\\s\\S]*Application support[\\s\\S]*src/cli-shared\\.ts",
+          "message": "Document the CLI layer boundary when introducing or changing the shared CLI support module."
+        }
+      ]
+    },
+    {
       "id": "docs-session-divider-length",
       "severity": "medium",
-      "title": "Documented source-prefixed session dividers must use runtime suffix length",
+      "title": "Documented source-prefixed session dividers must use full session ids",
       "appliesTo": {
-        "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
-        "diffIncludesAny": ["[[claude_", "[[codex_", "session divider"]
+        "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md", "src/schema/daily-note.ts", "src/english-ask.ts"],
+        "diffIncludesAny": ["[[claude_", "[[codex_", "session divider", "buildSessionDivider", "sessionId"]
       },
       "checks": [
         {
           "type": "noneContentRegex",
           "paths": ["AGENTS.md", "README.md", "llms.txt", "docs/**/*.md"],
-          "pattern": "\\[\\[(?:claude|codex)_[A-Za-z0-9]{6}\\]\\]",
-          "message": "Use 8 session-id characters in source-prefixed divider examples, matching runtime `sessionId.slice(0, 8)`."
+          "pattern": "\\[\\[(?:claude|codex)_[A-Za-z0-9]+\\]\\]",
+          "message": "Use full session ids in source-prefixed divider examples, not truncated examples."
+        },
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/schema/daily-note.ts", "src/english-ask.ts"],
+          "pattern": "sessionId\\.slice\\(0,\\s*8\\)",
+          "message": "New AgentLog/EnglishAsk session links must use the full session id. Keep truncation only for legacy matching code."
         }
       ]
     },
@@ -169,6 +245,284 @@
           "paths": [".github/workflows/release.yml"],
           "pattern": "if:\\s*steps\\.tag_check\\.outputs\\.exists\\s*==\\s*'false'[\\s\\S]*if:\\s*steps\\.tag_check\\.outputs\\.exists\\s*==\\s*'false'",
           "message": "Use a job-level publish gate instead of repeating the same tag-check condition on many steps."
+        }
+      ]
+    },
+    {
+      "id": "codex-uninstall-hook-error-handling",
+      "severity": "medium",
+      "title": "Codex hook uninstall must fail cleanly on malformed hooks.json",
+      "appliesTo": {
+        "paths": ["src/cli.ts", "src/codex-hooks.ts"],
+        "diffIncludesAny": ["unregisterCodexHook", "hooks.json", "uninstallCodex"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/cli.ts"],
+          "pattern": "function\\s+uninstallCodex[\\s\\S]*try\\s*\\{[\\s\\S]*unregisterCodexHook\\(",
+          "message": "Wrap `unregisterCodexHook()` during uninstall so malformed hooks.json exits cleanly instead of printing a stack trace."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "uninstall --codex exits cleanly when (?:Codex )?hooks\\.json is invalid",
+          "message": "Add a regression test for malformed Codex hooks.json during uninstall."
+        }
+      ]
+    },
+    {
+      "id": "codex-uninstall-legacy-notify-side-effects",
+      "severity": "medium",
+      "title": "Codex uninstall docs and output must include legacy notify cleanup",
+      "appliesTo": {
+        "paths": ["src/cli.ts", "README.md", "AGENTS.md"],
+        "diffIncludesAny": ["uninstall", "Codex hook", "legacy notify", "codexNotifyRestore"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/cli.ts", "README.md", "AGENTS.md"],
+          "pattern": "Remove Codex hook only|Remove Codex hook from `~/.codex/hooks\\.json` only",
+          "message": "Do not imply Codex uninstall only touches hooks or always restores notify; it may remove an AgentLog-owned legacy notify entry."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/cli.ts"],
+          "pattern": "Legacy Codex notify (?:removed|\\$\\{action\\})",
+          "message": "Emit a distinct message when Codex uninstall removes an AgentLog-owned legacy notify entry instead of restoring a previous command."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["README.md", "AGENTS.md"],
+          "pattern": "legacy .*notify",
+          "message": "Document legacy Codex notify cleanup when documenting Codex uninstall."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "legacy notify removal|removes legacy notify",
+          "message": "Add a regression test for legacy notify removal when no restore command exists."
+        }
+      ]
+    },
+    {
+      "id": "claude-hook-matcher-string",
+      "severity": "high",
+      "title": "Claude hook matcher must use the string format",
+      "appliesTo": {
+        "paths": ["src/claude-settings.ts", "src/cli.ts", "src/types.ts", "src/__tests__/cli.test.ts", "src/__tests__/cli-codex.test.ts", "README.md", "AGENTS.md", "docs/cc/**/*.md", "docs/review/SELF_REVIEW.md"],
+        "diffIncludesAny": ["HOOK_ENTRY", "matcher", "Claude Code", "UserPromptSubmit", "agentlog hook"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/claude-settings.ts"],
+          "pattern": "HOOK_ENTRY[\\s\\S]*matcher:\\s*\"\"",
+          "message": "Keep AgentLog's Claude hook on the documented string matcher format."
+        },
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/claude-settings.ts"],
+          "pattern": "matcher:\\s*\\{",
+          "message": "Do not register object matchers in Claude Code settings."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/claude-settings.ts"],
+          "pattern": "validateClaudeHookSettings[\\s\\S]*matcher[\\s\\S]*string[\\s\\S]*inspectClaudeHookState[\\s\\S]*validateClaudeHookSettings",
+          "message": "Doctor/validate must inspect matcher type compatibility, not just command presence."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/cli.test.ts"],
+          "pattern": "stale AgentLog hook matcher object[\\s\\S]*matcher must be a string",
+          "message": "Add regression coverage for stale object matcher migration and doctor failure."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/cli.ts"],
+          "pattern": "hasClaudeHookMetadata[\\s\\S]*hookState\\.kind === \"missing\"[\\s\\S]*!hasClaudeHookMetadata",
+          "message": "Do not use generic Codex relevance to downgrade missing Claude hook failures; require explicit Codex-only metadata."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/cli-codex.test.ts"],
+          "pattern": "expects both hooks but the Claude hook is missing",
+          "message": "Add a regression test for `--all`/both-hook installs where the Claude hook is missing."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["docs/cc/hook-integration.md"],
+          "pattern": "\"matcher\":\\s*\"\"",
+          "message": "Document the Claude hook settings example with an empty string matcher."
+        }
+      ]
+    },
+    {
+      "id": "englishask-recursion-guard",
+      "severity": "high",
+      "title": "EnglishAsk evaluator must not recursively evaluate itself",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/codex-notify.ts"],
+          "pattern": "runCodexNotify[\\s\\S]*ENGLISHASK_GUARD_ENV[\\s\\S]*readStdin",
+          "message": "Check `AGENTLOG_ENGLISHASK_EVAL` at the start of the notify entry point before reading stdin or forwarding."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "guarded evaluator child turns|without a notify argument|AGENTLOG_ENGLISHASK_EVAL",
+          "message": "Test that guarded evaluator child notify turns create no note, no forwarded notify, and no stdin wait."
+        }
+      ]
+    },
+    {
+      "id": "englishask-raw-evaluator-input",
+      "severity": "medium",
+      "title": "EnglishAsk evaluator must receive the raw prompt, not display formatting",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator", "prettyPrompt"]
+      },
+      "checks": [
+        {
+          "type": "noneContentRegex",
+          "paths": ["src/codex-notify.ts"],
+          "pattern": "const\\s+prompt\\s*=\\s*prettyPrompt\\([^)]*\\)[\\s\\S]*evaluateEnglishAsk\\(config,\\s*prompt\\s*,",
+          "message": "Pass the raw parsed prompt to EnglishAsk; reserve `prettyPrompt(...)` for Daily Note display."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "raw prompt to EnglishAsk|logging the display prompt|User prompt:\\\\n\\$\\{prompt\\}",
+          "message": "Add a regression test proving the evaluator receives raw multi-line prompt text while the note logs the display prompt."
+        }
+      ]
+    },
+    {
+      "id": "englishask-cwd-fallback",
+      "severity": "medium",
+      "title": "EnglishAsk evaluator must tolerate unavailable notify cwd",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator", "cwd"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "statSync\\(|runnableCwd\\(|process\\.cwd\\(",
+          "message": "Do not run the evaluator blindly in notify `cwd`; fall back when that path is unavailable."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "notify cwd is unavailable|missing cwd|missing-cwd",
+          "message": "Add a regression test for unavailable notify cwd, matching CI/other-machine payloads."
+        }
+      ]
+    },
+    {
+      "id": "englishask-prompt-list-line",
+      "severity": "medium",
+      "title": "EnglishAsk prompt metadata must stay on one Markdown list line",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "feedback.prompt", "[truncated]"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "listItemValue\\(|replace\\(/\\\\s\\+/",
+          "message": "Flatten stored prompt metadata before writing it as a Markdown list item."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "one Markdown list line|\\[truncated\\]",
+          "message": "Add a regression test for truncated multi-line prompt metadata in `- prompt:`."
+        }
+      ]
+    },
+    {
+      "id": "englishask-section-insertion",
+      "severity": "medium",
+      "title": "EnglishAsk feedback must be inserted inside the existing section",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["## EnglishAsk", "appendEnglishAskFeedback", "EnglishAsk"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "insertFeedbackBlock\\(|nextHeading",
+          "message": "Insert new feedback before the next top-level heading after `## EnglishAsk`, not blindly at EOF."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "existing EnglishAsk section|immediately following top-level section|## Other",
+          "message": "Add regression tests proving new feedback lands inside `## EnglishAsk`, including when the next `##` heading follows immediately."
+        }
+      ]
+    },
+    {
+      "id": "englishask-feedback-fence-safety",
+      "severity": "medium",
+      "title": "EnglishAsk feedback must not escape its Markdown code fence",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "feedback", "```"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/**/*.ts"],
+          "pattern": "codeFenceFor\\(|longestBacktickRun",
+          "message": "Use a dynamic fence longer than any backtick run in evaluator feedback."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "longer Markdown fence|## Injected",
+          "message": "Add a regression test with evaluator feedback containing ``` and a heading-like line."
+        }
+      ]
+    },
+    {
+      "id": "englishask-fail-soft",
+      "severity": "high",
+      "title": "EnglishAsk evaluator failures must not break AgentLog writes",
+      "appliesTo": {
+        "paths": ["src/**/*.ts"],
+        "diffIncludesAny": ["EnglishAsk", "englishAsk", "evaluator"]
+      },
+      "checks": [
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "EnglishAsk evaluator fails",
+          "message": "Add a regression test proving AgentLog still writes when EnglishAsk fails."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "times out",
+          "message": "Add a regression test for evaluator timeout handling."
+        },
+        {
+          "type": "anyContentRegex",
+          "paths": ["src/__tests__/**/*.ts"],
+          "pattern": "append failures silent",
+          "message": "Add a regression test proving EnglishAsk feedback append failures stay fail-soft."
         }
       ]
     },

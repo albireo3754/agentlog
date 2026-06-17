@@ -102,3 +102,65 @@ main          ← 릴리즈
        ├─ feat/29-full-session-id
        └─ ...
 ```
+
+---
+
+## SCM 주의: GH_HOST
+
+이 머신은 `GH_HOST=github.dktechin.in` 환경변수가 기본이라, agentlog의 `gh` 명령은
+모두 `GH_HOST=github.com` 접두사를 붙여야 한다 (origin이 github.com이기 때문).
+
+```bash
+GH_HOST=github.com gh issue view 43
+GH_HOST=github.com gh pr create --base develop ...
+```
+
+---
+
+## TDD (test-first)
+
+버그 수정·기능 추가는 **실패 테스트 먼저** 작성한다.
+
+1. 재현/요구사항을 드러내는 테스트를 추가 → `bun test`로 **올바른 이유로 실패**(red) 확인
+2. 통과시키는 **최소 구현**(green)
+3. 필요 시 리팩토링 (테스트 green 유지)
+
+---
+
+## 검증 (커밋 전 필수)
+
+```bash
+bun run typecheck   # tsc --noEmit, exit 0
+bun test            # 전체 green
+```
+
+둘 다 통과해야 커밋한다.
+
+---
+
+## 리뷰 (PR 전후 2단계)
+
+작성과 리뷰는 분리한다 — 자기 코드를 자기가 승인하지 않는다.
+
+1. **서브에이전트 리뷰**: `code-reviewer`(또는 OMC `oh-my-claudecode:code-reviewer`)에게
+   diff를 넘겨 리뷰받고, 지적사항 반영.
+2. **Copilot 리뷰**: PR 생성 후 Copilot 리뷰 요청 → 피드백 반영.
+
+```bash
+GH_HOST=github.com gh api repos/<owner>/agentlog/pulls/<PR#>/requested_reviewers \
+  -X POST -f "reviewers[]=copilot-pull-request-reviewer[bot]"
+```
+
+---
+
+## 머지
+
+리뷰 반영 + CI green 후:
+
+```bash
+GH_HOST=github.com gh pr merge <PR#> --squash --delete-branch
+```
+
+- **squash** 머지 → develop fast-forward
+- 머지 후 feature 브랜치(local + remote) 삭제, `git fetch --prune`
+- PR 제목/본문의 `Closes #N`으로 이슈 자동 close 확인

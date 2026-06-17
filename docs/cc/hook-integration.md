@@ -71,43 +71,42 @@ After running `npx agentlog init <vault>`, the hook is registered in
 }
 ```
 
-The `matcher` is empty string to match all prompts regardless of content.
+The `matcher` is an empty string to match all prompts regardless of content.
+Claude Code validates this field as a string; stale object matcher entries are
+not compatible with current Claude Code settings validation. Re-running
+`agentlog init` replaces AgentLog-owned stale hook entries with the canonical
+`"matcher": ""` entry, and `agentlog doctor` reports unsupported hook shapes.
 
 ---
 
 ## Daily Note Format
 
-AgentLog appends to `{vault}/Daily/{YYYY-MM-DD}-{요일}.md`.
+AgentLog resolves the Daily Note path from `.obsidian/daily-notes.json` first,
+then `obsidian daily:path` when the vault settings are unavailable or
+unsupported.
 
-### With time-block sections (Korean Daily Note format)
+If the Daily Note is missing in Obsidian mode, AgentLog runs `obsidian daily`
+first and only appends after the file exists. This lets Obsidian create the note
+and apply the user's Daily Notes template. AgentLog does not create a guessed
+`{vault}/Daily/...` fallback file in Obsidian mode when no safe path or
+bootstrap is available.
 
-If the file contains time-block checkbox lines, the entry is inserted under the
-matching 2-hour block:
-
-```markdown
-## 오전 (08-13)
-- [ ] 08 - 10
-- [x] 10 - 12
-  - 10:53 agentlog 개발을 위해서 작업 진행
-  - 11:07 스펙 문서 열어봐
-- [ ] 12 - 13
-```
-
-### Without time-block sections (fallback)
-
-If no time-block pattern is found, appended to an `## AgentLog` section at
-end of file:
+Entries are merged into an `## AgentLog` section:
 
 ```markdown
 ## AgentLog
+> 🕐 11:07 — js/agentlog › 스펙 문서 열어봐
+
+#### 10:53 · js/agentlog
+<!-- cwd=/Users/you/work/js/agentlog -->
+- - - - [[claude_abc12345-def6-7890-abcd-ef1234567890]]
 - 10:53 agentlog 개발을 위해서 작업 진행
 - 11:07 스펙 문서 열어봐
 ```
 
 ### `--plain` mode
 
-With `--plain` flag during init, writes to `{dir}/{YYYY-MM-DD}.md` with no
-time-block logic:
+With `--plain` flag during init, writes directly to `{dir}/{YYYY-MM-DD}.md`:
 
 ```markdown
 - 10:53 agentlog 개발을 위해서 작업 진행
