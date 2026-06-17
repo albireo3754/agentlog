@@ -51,12 +51,19 @@ Registration rules:
 1. Use `~/.codex/hooks.json` for user-level Codex integration.
 2. Preserve unrelated hook events and unrelated `UserPromptSubmit` hook groups.
 3. Add the AgentLog hook idempotently; never duplicate the same command.
-4. Omit `matcher` for `UserPromptSubmit`; Codex currently ignores matchers for
+4. Treat a `UserPromptSubmit` handler whose command is exactly `agentlog hook`
+   as an AgentLog legacy Codex handler and migrate it to
+   `agentlog hook --source codex`. Leaving both commands installed logs the same
+   Codex prompt twice and can mislabel one entry as Claude-sourced.
+5. When migration or uninstall changes the `UserPromptSubmit` hook array, drop
+   top-level `state` entries keyed to `:user_prompt_submit:` because Codex hook
+   trust state is index-based and may no longer point at the same command.
+6. Omit `matcher` for `UserPromptSubmit`; Codex currently ignores matchers for
    this event.
-5. Command hooks run with the Codex session `cwd`, but AgentLog still reads
+7. Command hooks run with the Codex session `cwd`, but AgentLog still reads
    `cwd` from hook stdin because it is part of the documented common input.
-6. `type: "command"` is the only handler type AgentLog should emit today.
-7. Do not configure `notify` for new Codex installs. Codex project-local config
+8. `type: "command"` is the only handler type AgentLog should emit today.
+9. Do not configure `notify` for new Codex installs. Codex project-local config
    also cannot override `notify`; user-level notification/hook behavior belongs
    in user-level Codex config.
 

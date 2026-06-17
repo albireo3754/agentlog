@@ -519,6 +519,8 @@ async function cmdDoctor(): Promise<void> {
 
     const detail = codexHookState.kind === "unsupported"
       ? `${CODEX_HOOKS_PATH} — unsupported hook config (${codexHookState.reason})`
+      : codexHookState.kind === "needs_migration"
+        ? `${CODEX_HOOKS_PATH} — ${codexHookState.reason}`
       : codexHookState.kind === "registered"
         ? `${CODEX_HOOKS_PATH} — hook registered`
         : hasCodexHookMetadata
@@ -535,6 +537,8 @@ async function cmdDoctor(): Promise<void> {
       detail,
       codexHookState.kind === "unsupported"
         ? "fix hooks.json or move it aside, then run: agentlog init --codex"
+        : codexHookState.kind === "needs_migration"
+          ? "run: agentlog init --codex to migrate the Codex hook"
         : legacyNotifyState.kind === "unsupported"
           ? "simplify legacy notify config or move config.toml aside, then run: agentlog init --codex"
           : hasCodexHookMetadata || hasRestoreMetadata || legacyNotifyState.kind === "registered"
@@ -671,7 +675,7 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dr
   } else {
     // Check if Codex hook is still registered
     const codexHookState = readCodexHookState();
-    if (codexHookState.kind === "registered") {
+    if (codexHookState.kind === "registered" || codexHookState.kind === "needs_migration") {
       console.warn(
         "⚠️  Codex hook is still registered. Run `agentlog uninstall --all` to also remove it."
       );

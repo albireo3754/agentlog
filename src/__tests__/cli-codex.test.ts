@@ -184,6 +184,49 @@ describe("cli codex commands", () => {
     expect(config.claudeHookInstalled).toBeUndefined();
   });
 
+  it("init --codex migrates a legacy Codex UserPromptSubmit AgentLog hook", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const pathWithCodex = makeFakeCodexPath(tmpHome);
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".codex", "hooks.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            { hooks: [{ type: "command", command: "agentlog hook" }] },
+            { hooks: [{ type: "command", command: "node /opt/omx/codex-native-hook.js" }] },
+          ],
+        },
+        state: {
+          "/tmp/hooks.json:user_prompt_submit:0:0": { trusted_hash: "sha256:old-user-prompt-submit" },
+          "/tmp/hooks.json:stop:0:0": { trusted_hash: "sha256:stop" },
+        },
+      }),
+      "utf-8"
+    );
+
+    const { exitCode } = await runCli(["init", "--codex", vault], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+      PATH: pathWithCodex,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(readCodexHooks(tmpHome)).toEqual({
+      hooks: {
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: "node /opt/omx/codex-native-hook.js" }] },
+          { hooks: [{ type: "command", command: "agentlog hook --source codex" }] },
+        ],
+      },
+      state: {
+        "/tmp/hooks.json:stop:0:0": { trusted_hash: "sha256:stop" },
+      },
+    });
+  });
+
   it("init --codex aborts on unsupported hooks.json", async () => {
     const vault = join(tmpHome, "Obsidian");
     const cfgDir = join(tmpHome, ".agentlog");
@@ -738,6 +781,52 @@ describe("cli codex commands", () => {
     expect(existsSync(join(cfgDir, "config.json"))).toBe(false);
   });
 
+  it("default uninstall warns when Codex hooks need migration", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            { matcher: "", hooks: [{ type: "command", command: "agentlog hook" }] },
+          ],
+        },
+      }),
+      "utf-8"
+    );
+    writeFileSync(
+      join(tmpHome, ".codex", "hooks.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            { hooks: [{ type: "command", command: "agentlog hook" }] },
+            { hooks: [{ type: "command", command: "agentlog hook --source codex" }] },
+          ],
+        },
+      }),
+      "utf-8"
+    );
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, claudeHookInstalled: true }),
+      "utf-8"
+    );
+
+    const { stderr, exitCode } = await runCli(["uninstall", "-y"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toContain("Codex hook is still registered");
+    expect(existsSync(join(tmpHome, ".codex", "hooks.json"))).toBe(true);
+  });
+
   it("doctor succeeds when Codex hook is installed", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
@@ -861,5 +950,41 @@ describe("cli codex commands", () => {
     expect(exitCode).not.toBe(0);
     expect(stdout).toContain("unsupported");
     expect(stdout).not.toContain("stack trace");
+  });
+
+  it("doctor reports legacy Codex hook entries as needing migration", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const pathWithCodex = makeFakeCodexPath(tmpHome);
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+    writeFileSync(
+      join(tmpHome, ".codex", "hooks.json"),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            { hooks: [{ type: "command", command: "agentlog hook" }] },
+            { hooks: [{ type: "command", command: "agentlog hook --source codex" }] },
+          ],
+        },
+      }),
+      "utf-8"
+    );
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, codexHookInstalled: true }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["doctor"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+      PATH: pathWithCodex,
+    });
+
+    expect(exitCode).not.toBe(0);
+    expect(stdout).toContain("legacy AgentLog Codex hook remains");
+    expect(stdout).toContain("agentlog init --codex");
   });
 });
