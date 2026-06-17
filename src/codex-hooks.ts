@@ -232,7 +232,19 @@ export function inspectCodexHookState(json: string): CodexHookState {
 }
 
 export function hasAgentlogCodexHook(json: string): boolean {
-  return inspectCodexHookState(json).kind === "registered";
+  let root: Record<string, unknown>;
+  try {
+    root = parseHooksJson(json);
+  } catch {
+    return false;
+  }
+
+  if (typeof root["hooks"] !== "object" || root["hooks"] === null || Array.isArray(root["hooks"])) {
+    return false;
+  }
+
+  const userPromptSubmit = (root["hooks"] as Record<string, unknown>)["UserPromptSubmit"];
+  return Array.isArray(userPromptSubmit) && userPromptSubmit.some(isAgentlogCodexHookEntry);
 }
 
 function readCodexHooksJson(): string {

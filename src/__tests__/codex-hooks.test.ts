@@ -109,6 +109,21 @@ describe("codex hook config", () => {
     });
   });
 
+  it("detects the current AgentLog hook even when legacy hooks need migration", () => {
+    const hooksJson = JSON.stringify({
+      hooks: {
+        UserPromptSubmit: [
+          { hooks: [{ type: "command", command: "agentlog hook" }] },
+          { hooks: [{ type: "command", command: "agentlog hook --source codex" }] },
+        ],
+      },
+    });
+
+    expect(inspectCodexHookState(hooksJson).kind).toBe("needs_migration");
+    expect(hasAgentlogCodexHook(hooksJson)).toBe(true);
+    expect(hasAgentlogCodexHook("{bad")).toBe(false);
+  });
+
   it("removes only the AgentLog Codex hook", () => {
     const installed = installCodexHook(JSON.stringify({
       hooks: {
