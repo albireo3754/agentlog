@@ -113,6 +113,18 @@ The `default = --all` variant is intentionally not supported. `agentlog init` st
 
 Use Claude Code or Codex normally. Claude and Codex prompts are logged from their `UserPromptSubmit` hook payloads.
 
+### Backfill Missed Prompts
+
+If hooks were disabled, untrusted, or misconfigured for part of the day, rebuild the Daily Note from local session JSONL files:
+
+```bash
+agentlog backfill              # today, Claude + Codex
+agentlog backfill 2026-06-19   # specific day
+agentlog backfill --source codex --dry-run
+```
+
+Backfill scans `~/.codex/sessions/YYYY/MM/DD/*.jsonl` and top-level `~/.claude/projects/**/*.jsonl`, extracts user prompts only, skips subagent/tool-result noise, and appends entries that are not already present in the target Daily Note.
+
 ### How It Works
 
 1. Claude Code or Codex fires the `UserPromptSubmit` hook
@@ -168,6 +180,7 @@ Current CLI:
 |---------|-------------|
 | `agentlog init [vault] [--plain] [--claude\|--codex\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex hook, `--all`: both |
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
+| `agentlog backfill [date] [--source all\|claude\|codex] [--dry-run]` | Scan local Claude/Codex session JSONL files and append missing prompts to the Daily Note |
 | `agentlog codex-debug <prompt>` | Run `codex exec "<prompt>"` with Codex hook auto-registered |
 | `agentlog doctor` | Run health checks for the binary, vault, Claude hook registration/format, and Obsidian CLI. Also checks Codex hook status if configured |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12.4+) |

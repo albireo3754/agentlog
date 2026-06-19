@@ -43,6 +43,7 @@ import {
   unregisterCodexNotify,
 } from "./codex-settings.js";
 import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo, readVersion, resolvePackageRoot } from "./version-info.js";
+import { parseDateArg, runBackfill, type BackfillSource } from "./backfill.js";
 import { Command } from "commander";
 
 type InitTarget = "claude" | "codex" | "all";
@@ -630,6 +631,39 @@ async function cmdVersion(): Promise<void> {
   console.log(formatVersionOutput(getRuntimeInfo()));
 }
 
+async function cmdBackfill(dateArg: string | undefined, opts: { source: BackfillSource; dryRun: boolean; format: string }): Promise<void> {
+  if (!["all", "claude", "codex"].includes(opts.source)) {
+    console.error("Error: --source must be one of: all, claude, codex");
+    process.exit(1);
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    console.error("[agentlog] not initialized. Run: agentlog init ~/path/to/vault");
+    process.exit(1);
+  }
+
+  let date: Date;
+  try {
+    date = parseDateArg(dateArg);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  const result = runBackfill(config, { date, source: opts.source, dryRun: opts.dryRun });
+  if (opts.format === "json") {
+    console.log(JSON.stringify({ status: "success", data: result }));
+    return;
+  }
+
+  const verb = opts.dryRun ? "Would append" : "Appended";
+  console.log(`${verb} ${result.inserted} entries from ${result.found} discovered prompts (${result.skipped} already present).`);
+  console.log(`  date: ${result.date}`);
+  console.log(`  scanned sessions: ${result.scanned}`);
+  if (result.filePath) console.log(`  note: ${result.filePath}`);
+}
+
 async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dryRun: boolean }): Promise<void> {
   if (opts.codex && opts.all) {
     console.error("Error: choose at most one uninstall target: --codex or --all");
@@ -795,6 +829,16 @@ const SCHEMA_DATA = {
       options: [],
     },
     {
+      name: "backfill",
+      description: "Scan Claude/Codex session JSONL files and append missing prompts to a Daily Note",
+      arguments: [{ name: "date", description: "Date to backfill (YYYY-MM-DD, default: today)", required: false }],
+      options: [
+        { flags: "--source <source>", description: "Source to scan: all, claude, or codex" },
+        { flags: "--dry-run", description: "Report entries without writing to the note" },
+        { flags: "--format <format>", description: "Output format: text or json" },
+      ],
+    },
+    {
       name: "hook",
       description: "Run hook (called by Claude Code or Codex UserPromptSubmit)",
       arguments: [],
@@ -924,6 +968,16 @@ program
   .argument("[prompt...]", "Prompt text to send to codex exec")
   .action(async (prompt: string[]) => {
     await cmdCodexDebug(prompt);
+  });
+
+program
+  .command("backfill [date]")
+  .description("Scan Claude/Codex session JSONL files and append missing prompts to a Daily Note")
+  .option("--source <source>", "Source to scan: all, claude, or codex", "all")
+  .option("--dry-run", "Report entries without writing to the note", false)
+  .option("--format <format>", "Output format: text or json", "text")
+  .action(async (date: string | undefined, opts: { source: BackfillSource; dryRun: boolean; format: string }) => {
+    await cmdBackfill(date, opts);
   });
 
 program
