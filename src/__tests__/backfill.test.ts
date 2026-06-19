@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { tmpdir } from "os";
-import { collectBackfillEntries, parseDateArg, runBackfill } from "../backfill.js";
+import { collectBackfillEntries, hasPathSegment, parseDateArg, runBackfill } from "../backfill.js";
 import type { AgentLogConfig } from "../types.js";
 
 function makeTmpDir(): string {
@@ -25,6 +25,17 @@ describe("backfill", () => {
 
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
+  });
+
+  it("rejects impossible calendar dates", () => {
+    expect(() => parseDateArg("2026-13-99")).toThrow("valid YYYY-MM-DD calendar date");
+    expect(() => parseDateArg("2026-02-30")).toThrow("valid YYYY-MM-DD calendar date");
+  });
+
+  it("detects path segments with POSIX or Windows separators", () => {
+    expect(hasPathSegment("/Users/me/.claude/projects/subagents/agent.jsonl", "subagents")).toBe(true);
+    expect(hasPathSegment("C:\\Users\\me\\.claude\\projects\\subagents\\agent.jsonl", "subagents")).toBe(true);
+    expect(hasPathSegment("/Users/me/.claude/projects/not-subagents/agent.jsonl", "subagents")).toBe(false);
   });
 
   it("collects Codex user_message entries without logging injected context", () => {
@@ -129,5 +140,54 @@ describe("backfill", () => {
     expect(second.skipped).toBe(1);
     const note = readFileSync(join(vault, "2026-06-19.md"), "utf-8");
     expect(note.match(/write once/g)?.length).toBe(1);
+  });
+
+  it("only treats an entry as duplicate inside the matching session block", () => {
+    const codexHome = join(root, ".codex");
+    const vault = join(root, "vault");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(join(vault, ".obsidian", "daily-notes.json"), JSON.stringify({ folder: "", format: "YYYY-MM-DD" }), "utf-8");
+    writeFileSync(
+      join(vault, "2026-06-19.md"),
+      [
+        "## AgentLog",
+        "> 🕐 12:01 — js/other › existing",
+        "",
+        "#### 09:00 · js/other",
+        "<!-- cwd=/Users/me/work/js/other -->",
+        "- - - - [[codex_codex-session]]",
+        "- 09:00 existing",
+        "",
+        "#### 12:00 · js/agentlog",
+        "<!-- cwd=/Users/me/work/js/agentlog -->",
+        "- - - - [[codex_other-session]]",
+        "- 12:01 same prompt",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+    writeJsonl(join(codexHome, "sessions", "2026", "06", "19", "rollout.jsonl"), [
+      {
+        timestamp: "2026-06-19T12:00:00",
+        type: "session_meta",
+        payload: { id: "codex-session", cwd: "/Users/me/work/js/agentlog", thread_source: "user" },
+      },
+      {
+        timestamp: "2026-06-19T12:01:00",
+        type: "event_msg",
+        payload: { type: "user_message", message: "same prompt" },
+      },
+    ]);
+
+    const result = runBackfill(
+      { vault, plain: false },
+      { date: parseDateArg("2026-06-19"), source: "codex", codexHome },
+    );
+
+    expect(result.inserted).toBe(1);
+    expect(result.skipped).toBe(0);
+    const note = readFileSync(join(vault, "2026-06-19.md"), "utf-8");
+    expect(note.match(/^- 12:01 same prompt$/gm)?.length).toBe(2);
+    expect(note).toContain("- - - - [[codex_codex-session]]\n- 12:01 same prompt");
   });
 });

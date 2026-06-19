@@ -636,6 +636,10 @@ async function cmdBackfill(dateArg: string | undefined, opts: { source: Backfill
     console.error("Error: --source must be one of: all, claude, codex");
     process.exit(1);
   }
+  if (!["text", "json"].includes(opts.format)) {
+    console.error("Error: --format must be one of: text, json");
+    process.exit(1);
+  }
 
   const config = loadConfig();
   if (!config) {
@@ -651,7 +655,14 @@ async function cmdBackfill(dateArg: string | undefined, opts: { source: Backfill
     process.exit(1);
   }
 
-  const result = runBackfill(config, { date, source: opts.source, dryRun: opts.dryRun });
+  let result;
+  try {
+    result = runBackfill(config, { date, source: opts.source, dryRun: opts.dryRun });
+  } catch (err) {
+    console.error(err instanceof Error ? `Error: ${err.message}` : String(err));
+    process.exit(1);
+  }
+
   if (opts.format === "json") {
     console.log(JSON.stringify({ status: "success", data: result }));
     return;

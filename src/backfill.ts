@@ -36,7 +36,16 @@ export function parseDateArg(value: string | undefined, now: Date = new Date()):
   const m = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) throw new Error("date must be YYYY-MM-DD");
   const [, yyyy, mm, dd] = m;
-  return new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  const year = Number(yyyy);
+  const month = Number(mm);
+  const day = Number(dd);
+  const date = new Date(0);
+  date.setFullYear(year, month - 1, day);
+  date.setHours(0, 0, 0, 0);
+  if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+    throw new Error("date must be a valid YYYY-MM-DD calendar date");
+  }
+  return date;
 }
 
 function dateKey(date: Date): string {
@@ -88,6 +97,10 @@ function walkJsonl(root: string): string[] {
   return out;
 }
 
+export function hasPathSegment(filePath: string, segment: string): boolean {
+  return filePath.split(/[\\/]+/).includes(segment);
+}
+
 function extractTextParts(value: unknown, textType: string): string | null {
   if (typeof value === "string") return value;
   if (!Array.isArray(value)) return null;
@@ -135,7 +148,7 @@ function collectCodexEntries(date: Date, codexHome = join(homedir(), ".codex")):
 }
 
 function collectClaudeEntries(date: Date, claudeHome = join(homedir(), ".claude")): { scanned: number; entries: LogEntry[] } {
-  const files = walkJsonl(join(claudeHome, "projects")).filter((file) => !file.includes("/subagents/"));
+  const files = walkJsonl(join(claudeHome, "projects")).filter((file) => !hasPathSegment(file, "subagents"));
   const entries: LogEntry[] = [];
 
   for (const file of files) {
@@ -176,7 +189,18 @@ function noteContainsEntry(config: AgentLogConfig, entry: LogEntry, date: Date):
   const line = buildAgentLogEntry(entry.time, entry.prompt);
   if (config.plain) return content.includes(line);
   const divider = buildSessionDivider(entry.sessionId, entry.source);
-  return content.includes(divider) && content.includes(line);
+  const lines = content.split("\n");
+
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i] !== divider) continue;
+
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j] === line) return true;
+      if (lines[j].startsWith("#### ") || lines[j].startsWith("## ") || /^- - - - (?:\[\[|\()/.test(lines[j])) break;
+    }
+  }
+
+  return false;
 }
 
 export function runBackfill(config: AgentLogConfig, options: BackfillOptions = {}): BackfillResult {
