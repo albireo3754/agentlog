@@ -27,6 +27,7 @@
     "build": "bun build src/cli.ts src/hook.ts --outdir dist --target node",
     "dev": "bun run src/cli.ts",
     "dev:watch": "bun run --watch src/cli.ts",
+    "agent:redteam-loop": "node scripts/agent-redteam-loop.mjs",
     "prepublishOnly": "bun run typecheck",
     "prd:redteam": "node scripts/prd-redteam.mjs",
     "self-review": "node scripts/self-review.mjs",

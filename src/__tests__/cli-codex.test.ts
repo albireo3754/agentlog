@@ -315,6 +315,26 @@ describe("cli codex commands", () => {
     const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
     expect(config.codexHookInstalled).toBe(true);
     expect(config.claudeHookInstalled).toBe(true);
+    expect(config.hermesHookInstalled).toBeUndefined();
+  });
+
+  it("init --hermes records metadata and prints manual setup without editing Hermes config", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+
+    const { stdout, stderr, exitCode } = await runCli(["init", "--hermes", vault], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain("Hermes manual setup required");
+    expect(stdout).toContain("agentlog hook --source hermes");
+    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
+    expect(config.hermesHookInstalled).toBe(true);
+    expect(existsSync(join(tmpHome, ".hermes", "config.yaml"))).toBe(false);
   });
 
   it("codex-notify writes a Daily Note entry and forwards the saved notify command", async () => {
@@ -627,6 +647,66 @@ describe("cli codex commands", () => {
     expect(stdout).toBe("");
     expect(stderr).toBe("");
     expect(readFileSync(findPlainNotePath(vault), "utf-8")).toContain("Reply with exactly: OK");
+  });
+
+  it("agentlog hook --source hermes writes a Hermes-sourced Daily Note entry", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, hermesHookInstalled: true }),
+      "utf-8"
+    );
+
+    const raw = fixture("hermes-pre-llm-call.json");
+    const proc = Bun.spawn([BUN_BIN, "run", CLI_PATH, "hook", "--source", "hermes"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, HOME: tmpHome, AGENTLOG_CONFIG_DIR: cfgDir },
+    });
+    proc.stdin.write(raw);
+    proc.stdin.end();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toBe("");
+    const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    expect(content).toContain("Hermes prompt capture");
+  });
+
+  it("agentlog hook with unknown explicit source does not fall back to Claude", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(join(cfgDir, "config.json"), JSON.stringify({ vault, plain: true }), "utf-8");
+
+    const proc = Bun.spawn([BUN_BIN, "run", CLI_PATH, "hook", "--source", "bad"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, HOME: tmpHome, AGENTLOG_CONFIG_DIR: cfgDir },
+    });
+    proc.stdin.write(fixture("codex-hook-user-prompt-submit.json"));
+    proc.stdin.end();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toContain("Unsupported source: bad");
+    expect(() => findPlainNotePath(vault)).toThrow();
   });
 
   it("legacy codex-uninstall command is rejected", async () => {
@@ -986,5 +1066,53 @@ describe("cli codex commands", () => {
     expect(exitCode).not.toBe(0);
     expect(stdout).toContain("legacy AgentLog Codex hook remains");
     expect(stdout).toContain("agentlog init --codex");
+  });
+
+  it("doctor warns when Hermes metadata exists but manual hook is missing", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, hermesHookInstalled: true }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["doctor"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("⚠️ hermes");
+    expect(stdout).toContain("hook command not detected");
+  });
+
+  it("doctor passes Hermes when config.yaml contains the manual hook command", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    mkdirSync(join(tmpHome, ".hermes"), { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, hermesHookInstalled: true }),
+      "utf-8"
+    );
+    writeFileSync(
+      join(tmpHome, ".hermes", "config.yaml"),
+      'hooks:\n  pre_llm_call:\n    - command: "agentlog hook --source hermes"\n',
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["doctor"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("✅ hermes");
+    expect(stdout).toContain("hook command present");
   });
 });

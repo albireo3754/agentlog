@@ -1,11 +1,11 @@
 {
-  "checkedAt": "2026-06-21T07:35:31.844Z",
+  "checkedAt": "2026-06-21T11:25:54.034Z",
   "prd": "docs/plans/2026-06-21-hook-provider-abstraction-hermes-prd.md",
-  "verdict": "fail",
+  "verdict": "pass",
   "mechanical": {
     "verdict": "pass",
-    "total": 13,
-    "passed": 13,
+    "total": 15,
+    "passed": 15,
     "failed": 0,
     "checks": [
       {
@@ -24,7 +24,7 @@
         "id": "phase0-before-phase1",
         "description": "Phase 0 behavior lock appears before provider extraction",
         "passed": true,
-        "evidence": "Phase 0 index=5443, Phase 1 index=6452"
+        "evidence": "Phase 0 index=243, Phase 1 index=538"
       },
       {
         "id": "phase0-coverage-matrix",
@@ -47,6 +47,12 @@
       {
         "id": "phase0-agent-readiness",
         "description": "Phase 0 requires agent-framework readiness review and PRD gap patching",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "phase0-artifacts-exist",
+        "description": "Phase 0 coverage/readiness/research artifacts exist on disk",
         "passed": true,
         "evidence": ""
       },
@@ -81,8 +87,14 @@
         "evidence": ""
       },
       {
-        "id": "open-decisions",
-        "description": "YAML mutation and init --hermes behavior remain explicit open questions",
+        "id": "init-hermes-decision",
+        "description": "PRD resolves init --hermes as docs-only without Hermes YAML mutation",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "backfill-source-contract",
+        "description": "PRD explicitly rejects Hermes backfill source until separately specified",
         "passed": true,
         "evidence": ""
       }
@@ -90,20 +102,14 @@
   },
   "model": {
     "invoked": true,
-    "verdict": "fail",
-    "findings": [
-      {
-        "severity": "high",
-        "message": "spawnSync codex ETIMEDOUT",
-        "evidence": "codex exec failed to start or timed out"
-      }
-    ],
+    "verdict": "pass",
+    "findings": [],
     "missingRequirements": [],
-    "stdout": "",
-    "stderr": "Reading additional input from stdin...\n2026-06-21T07:34:31.987671Z  WARN codex_features: unknown feature key in config: experimental_use_rmcp_client\n2026-06-21T07:34:32.574532Z  WARN codex_core_plugins::manifest: ignoring interface.defaultPrompt[0]: prompt must be at most 128 characters path=/Users/pray/.codex/.tmp/plugins/plugins/ngs-analysis/.codex-plugin/plugin.json\n2026-06-21T07:34:32.576839Z  WARN codex_core_plugins::manifest: ignoring interface.defaultPrompt[0]: prompt must be at most 128 characters path=/Users/pray/.codex/.tmp/plugins/plugins/ngs-analysis/.codex-plugin/plugin.json\nOpenAI Codex v0.141.0\n--------\nworkdir: /Users/pray/worktrees/agentlog-prd-redteam\nmodel: gpt-5.3-codex-spark\nprovider: openai\napproval: never\nsandbox: danger-full-access\nreasoning effort: low\nreasoning summaries: none\nsession id: 019ee91a-4042-78b2-81b4-21a3085e74c1\n--------\nuser\nYou are red-teaming an implementation PRD for AgentLog.\n\nReturn only compact JSON with this exact shape:\n{\"verdict\":\"pass\"|\"fail\",\"findings\":[{\"severity\":\"high\"|\"medium\"|\"low\",\"message\":\"...\",\"evidence\":\"...\"}],\"missingRequirements\":[\"...\"]}\n\nPass only if the PRD is executable by a coding agent and fully covers the user's Phase 0 requirement:\n- current behavior coverage tests before abstraction\n- QA smoke validation tests\n- agent-framework readiness validation\n- PRD gap patching before provider code changes\n- later migration to Hermes only after provider abstraction\n\nFail if any required Phase 0 deliverable, guardrail, or verification criterion is missing or ambiguous.\n\nPRD:\n# Hook Provider Abstraction, Then Hermes\n\n> status: draft\n> created: 2026-06-21\n> updated: 2026-06-21\n> revision: 1\n\n## 0. LLM Work Guide\n\n> **Follow the Spec Execution Protocol (`/sisyphus`).** This PRD is implementation-ready, but code work should start only after review.\n\n| Item | Section |\n|------|---------|\n| Task Checklist | §6 |\n| Naming Conventions | §3.5 |\n| State file | `docs/plans/2026-06-21-hook-provider-abstraction-hermes-prd.state.md` |\n| Decision Log | §8 |\n| Handoff Snapshot | §9 |\n| Changelog | §10 |\n\n## 1. Goal\n\nRefactor AgentLog's Claude/Codex hook integration into a small provider layer, then add Hermes Agent as the third hook provider.\n\nThis follows the \"third time\" rule:\n\n- Claude-only did not need an abstraction.\n- Claude + Codex still tolerated explicit branching.\n- Claude + Codex + Hermes creates the third repeated hook lifecycle path, so provider extraction is now justified.\n\nThe desired end state:\n\n- Existing Claude and Codex installs, doctor checks, uninstall behavior, and Daily Note output remain unchanged.\n- Hook provider lifecycle logic becomes registry-driven instead of hard-coded throughout `src/cli.ts`.\n- `agentlog hook --source hermes` accepts Hermes `pre_llm_call` shell-hook payloads and writes `[[hermes_<session_id>]]` dividers.\n- Hermes setup is documented first; AgentLog-owned mutation of `~/.hermes/config.yaml` is optional and explicitly scoped.\n\n## 2. Non-Goals\n\n- Do not rewrite the Daily Note writer.\n- Do not redesign Obsidian path resolution or Daily Note bootstrap.\n- Do not add Hermes backfill until Hermes transcript format is separately verified.\n- Do not make EnglishAsk run for Hermes.\n- Do not silently include Hermes in `agentlog init --all`; keep `--all` as Claude+Codex for backward compatibility.\n- Do not regex-edit arbitrary YAML for `~/.hermes/config.yaml`.\n- Do not add a broad plugin framework beyond the hook-provider boundary.\n\n## 3. Design\n\n### 3.1 Deliverables\n\n| Deliverable | Path | Consumer | Format |\n|-------------|------|----------|--------|\n| Provider type definitions | `src/hook-providers/types.ts` | CLI, hook parser, tests | TypeScript |\n| Provider registry | `src/hook-providers/index.ts` | CLI orchestration | TypeScript |\n| Claude provider adapter | `src/hook-providers/claude.ts` | provider registry | TypeScript |\n| Codex provider adapter | `src/hook-providers/codex.ts` | provider registry | TypeScript |\n| Hermes provider adapter | `s\n[truncated 15658 chars]",
+    "stdout": "{\"verdict\":\"pass\",\"findings\":[],\"missingRequirements\":[]}\n",
+    "stderr": "Reading additional input from stdin...\nOpenAI Codex v0.141.0\n--------\nworkdir: /Users/pray/worktrees/agentlog-prd-redteam\nmodel: gpt-5.3-codex-spark\nprovider: openai\napproval: never\nsandbox: danger-full-access\nreasoning effort: low\nreasoning summaries: none\nsession id: 019ee9ed-f39d-7823-a6df-3ba0daa41282\n--------\nuser\nYou are red-teaming an implementation PRD for AgentLog.\n\nReturn only compact JSON with this exact shape:\n{\"verdict\":\"pass\"|\"fail\",\"findings\":[{\"severity\":\"high\"|\"medium\"|\"low\",\"message\":\"...\",\"evidence\":\"...\"}],\"missingRequirements\":[\"...\"]}\n\nPass only if the PRD is executable by a coding agent and fully covers the user's Phase 0 requirement:\n- current behavior coverage tests before abstraction\n- QA smoke validation tests\n- agent-framework readiness validation\n- PRD gap patching before provider code changes\n- later migration to Hermes only after provider abstraction\n\nFail if any required Phase 0 deliverable, guardrail, or verification criterion is missing or ambiguous.\n\nPRD:\n# Hook Provider Abstraction, Then Hermes\n\n> status: draft\n> created: 2026-06-21\n> updated: 2026-06-21\n> revision: 2\n\n## 0. LLM Work Guide\n\n> **Follow the Spec Execution Protocol (`/sisyphus`).** This PRD is implementation-ready only after the Phase 0 hard gate below passes.\n\n| Item | Section |\n|------|---------|\n| Task Checklist | §6 |\n| Naming Conventions | §3.5 |\n| State file | `docs/plans/2026-06-21-hook-provider-abstraction-hermes-prd.state.md` |\n| Decision Log | §8 |\n| Handoff Snapshot | §9 |\n| Changelog | §10 |\n\nHard gate:\n\n- Phase 1 provider extraction must not start until Phase 0 coverage matrix, missing regression tests, QA smoke plan, agent-framework readiness review, and PRD gap patch are complete.\n- Phase 0 completion evidence must include `bun test`, `bun run typecheck`, `agentlog doctor`, and `node scripts/prd-redteam.mjs --output docs/plans/2026-06-21-hook-provider-prd-redteam-report.json`.\n- If the red-team report fails, patch this PRD first, then rerun the gate before implementation.\n- If the red-team report is missing, stale for the current PRD revision, invalid JSON, or has `\"verdict\" != \"pass\"`, Phase 1 is blocked.\n- The Phase 0 sign-off proof is this exact evidence set:\n  - `docs/plans/2026-06-21-hook-provider-current-behavior-coverage.md` exists and every row has `automated`, `manual QA`, or `not in scope` evidence.\n  - `docs/plans/2026-06-21-hook-provider-agent-readiness.md` exists and lists no blocker with status `open`.\n  - Missing regression tests discovered by those documents are committed before provider extraction.\n  - `docs/plans/2026-06-21-hook-provider-prd-redteam-report.json` exists with `\"verdict\": \"pass\"`.\n  - The final implementation note cites the validation commands and their pass/fail output.\n\nPhase 0 command thresholds:\n\n| Command | Required threshold |\n|---------|--------------------|\n| `bun test` | exit code 0 for the full suite |\n| `bun run typecheck` | exit code 0 |\n| `bun run build` | exit code 0 |\n| `agentlog doctor` | exit code 0 in the developer environment |\n| `node scripts/prd-redteam.mjs --output docs/plans/2026-06-21-hook-provider-prd-redteam-report.json` | exit code 0 and report JSON `\"verdict\": \"pass\"` |\n\nPhase 0 artifact status:\n\n| Artifact | Required status | Machine-check |\n|----------|-----------------|---------------|\n| `docs/plans/2026-06-21-hook-provider-current-behavior-coverage.md` | present before Phase 1 | `phase0-artifacts-exist` red-team check |\n| `docs/plans/2026-06-21-hook-provider-agent-readiness.md` | present before Phase 1, no open blocker | `phase0-artifacts-exist` red-team check plus reviewer read |\n| `docs/plans/2026-06-21-hook-provider-prd-redteam-report.json` | regenerated after PRD edits | JSON `\"verdict\": \"pass\"` |\n\n## 1. Goal\n\nRefactor AgentLog's Claude/Codex hook integration into a small provider layer, then add Hermes Agent as the third hook provider.\n\nThis follows the \"third time\" rule:\n\n- Claude-only did not need an abstraction.\n- Claude + Codex still tolerat\n[truncated 19427 chars]",
     "exitCode": 0,
     "model": "gpt-5.3-codex-spark",
     "reasoningEffort": "low",
-    "timeoutMs": 60000
+    "timeoutMs": 120000
   }
 }

@@ -1,0 +1,14 @@
+{
+  "hook_event_name": "pre_llm_call",
+  "tool_name": null,
+  "tool_input": null,
+  "session_id": "hermes-session-123",
+  "cwd": "/Users/pray/work/js/agentlog",
+  "extra": {
+    "user_message": "Hermes prompt capture",
+    "conversation_history": [],
+    "is_first_turn": true,
+    "model": "nous/hermes",
+    "platform": "cli"
+  }
+}

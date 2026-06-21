@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 
 const DEFAULT_PRD = "docs/plans/2026-06-21-hook-provider-abstraction-hermes-prd.md";
 
@@ -44,7 +45,7 @@ function printHelp() {
 
 Runs a two-layer PRD red-team gate:
   1. mechanical checks for required Phase 0 PRD coverage
-  2. model review through: codex exec -- <prompt>
+  2. model review through isolated: codex exec --ephemeral --ignore-rules -- <prompt>
 
 Options:
   --json          Print the full JSON report to stdout
@@ -73,7 +74,14 @@ function matchesAll(text, patterns) {
   return patterns.every((pattern) => pattern.test(text));
 }
 
-function mechanicalChecks(prd) {
+const REQUIRED_PHASE0_FILES = [
+  "docs/plans/2026-06-21-hook-provider-current-behavior-coverage.md",
+  "docs/plans/2026-06-21-hook-provider-agent-readiness.md",
+  "docs/research/2026-06-21-hermes-agentlog-research.md",
+  "docs/research/2026-06-21-hook-provider-abstraction-research.md",
+];
+
+function mechanicalChecks(prd, rootDir = process.cwd()) {
   const sections = [
     "## 0. LLM Work Guide",
     "## 1. Goal",
@@ -147,6 +155,12 @@ function mechanicalChecks(prd) {
       ])
     ),
     check(
+      "phase0-artifacts-exist",
+      "Phase 0 coverage/readiness/research artifacts exist on disk",
+      REQUIRED_PHASE0_FILES.every((file) => existsSync(resolve(rootDir, file))),
+      REQUIRED_PHASE0_FILES.filter((file) => !existsSync(resolve(rootDir, file))).join(", ")
+    ),
+    check(
       "non-goals-guardrails",
       "PRD excludes risky or out-of-scope Hermes behavior",
       includesAll(prd, [
@@ -194,11 +208,20 @@ function mechanicalChecks(prd) {
       ])
     ),
     check(
-      "open-decisions",
-      "YAML mutation and init --hermes behavior remain explicit open questions",
+      "init-hermes-decision",
+      "PRD resolves init --hermes as docs-only without Hermes YAML mutation",
       includesAll(prd, [
-        "Should `agentlog init --hermes` be runtime-only documentation output",
-        "is adding a YAML parser dependency acceptable",
+        "`agentlog init --hermes` is docs-only",
+        "does not write `~/.hermes/config.yaml`",
+      ])
+    ),
+    check(
+      "backfill-source-contract",
+      "PRD explicitly rejects Hermes backfill source until separately specified",
+      includesAll(prd, [
+        "agentlog backfill --source hermes",
+        "Error: --source must be one of: all, claude, codex",
+        "Hermes transcript backfill is separately specified",
       ])
     ),
   ];
@@ -242,24 +265,55 @@ function trimOutput(value, maxChars = 4000) {
   return `${value.slice(0, maxChars)}\n[truncated ${value.length - maxChars} chars]`;
 }
 
+function createIsolatedCodexHome(args) {
+  const codexHome = mkdtempSync(join(tmpdir(), "agentlog-prd-redteam-codex-"));
+  const sourceHome = process.env.CODEX_HOME || join(homedir(), ".codex");
+  const authPath = join(sourceHome, "auth.json");
+  if (existsSync(authPath)) {
+    copyFileSync(authPath, join(codexHome, "auth.json"));
+  }
+  writeFileSync(
+    join(codexHome, "config.toml"),
+    [
+      `model = "${args.model}"`,
+      `model_reasoning_effort = "${args.reasoningEffort}"`,
+      `approval_policy = "never"`,
+      `sandbox_mode = "danger-full-access"`,
+      "",
+    ].join("\n"),
+    "utf-8"
+  );
+  return codexHome;
+}
+
 function runCodexReview(prd, args) {
-  const result = spawnSync("codex", [
-    "exec",
-    "-m",
-    args.model,
-    "-c",
-    `model_reasoning_effort="${args.reasoningEffort}"`,
-    "--",
-    modelPrompt(prd),
-  ], {
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
-    timeout: args.timeoutMs,
-    env: {
-      ...process.env,
-      AGENTLOG_ENGLISHASK_EVAL: "1",
-    },
-  });
+  const isolatedCodexHome = createIsolatedCodexHome(args);
+  let result;
+  try {
+    result = spawnSync("codex", [
+      "exec",
+      "--skip-git-repo-check",
+      "--ignore-rules",
+      "--ephemeral",
+      "-m",
+      args.model,
+      "-c",
+      `model_reasoning_effort="${args.reasoningEffort}"`,
+      "--",
+      modelPrompt(prd),
+    ], {
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+      timeout: args.timeoutMs,
+      env: {
+        ...process.env,
+        AGENTLOG_ENGLISHASK_EVAL: "1",
+        CODEX_HOME: isolatedCodexHome,
+      },
+    });
+  } finally {
+    rmSync(isolatedCodexHome, { recursive: true, force: true });
+  }
 
   if (result.error) {
     return {
@@ -345,7 +399,7 @@ function main() {
   }
 
   const prd = readFileSync(prdPath, "utf-8");
-  const checks = mechanicalChecks(prd);
+  const checks = mechanicalChecks(prd, process.cwd());
   const failed = checks.filter((item) => !item.passed);
   const mechanical = {
     verdict: failed.length === 0 ? "pass" : "fail",
@@ -362,7 +416,7 @@ function main() {
   const result = {
     checkedAt: new Date().toISOString(),
     prd: args.prd,
-    verdict: mechanical.verdict === "pass" && model.verdict === "pass" ? "pass" : "fail",
+    verdict: mechanical.verdict === "pass" && (args.skipModel || model.verdict === "pass") ? "pass" : "fail",
     mechanical,
     model,
   };

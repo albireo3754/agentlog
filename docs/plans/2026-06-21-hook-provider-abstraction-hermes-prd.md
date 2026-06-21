@@ -3,11 +3,11 @@
 > status: draft
 > created: 2026-06-21
 > updated: 2026-06-21
-> revision: 1
+> revision: 2
 
 ## 0. LLM Work Guide
 
-> **Follow the Spec Execution Protocol (`/sisyphus`).** This PRD is implementation-ready, but code work should start only after review.
+> **Follow the Spec Execution Protocol (`/sisyphus`).** This PRD is implementation-ready only after the Phase 0 hard gate below passes.
 
 | Item | Section |
 |------|---------|
@@ -17,6 +17,37 @@
 | Decision Log | §8 |
 | Handoff Snapshot | §9 |
 | Changelog | §10 |
+
+Hard gate:
+
+- Phase 1 provider extraction must not start until Phase 0 coverage matrix, missing regression tests, QA smoke plan, agent-framework readiness review, and PRD gap patch are complete.
+- Phase 0 completion evidence must include `bun test`, `bun run typecheck`, `agentlog doctor`, and `node scripts/prd-redteam.mjs --output docs/plans/2026-06-21-hook-provider-prd-redteam-report.json`.
+- If the red-team report fails, patch this PRD first, then rerun the gate before implementation.
+- If the red-team report is missing, stale for the current PRD revision, invalid JSON, or has `"verdict" != "pass"`, Phase 1 is blocked.
+- The Phase 0 sign-off proof is this exact evidence set:
+  - `docs/plans/2026-06-21-hook-provider-current-behavior-coverage.md` exists and every row has `automated`, `manual QA`, or `not in scope` evidence.
+  - `docs/plans/2026-06-21-hook-provider-agent-readiness.md` exists and lists no blocker with status `open`.
+  - Missing regression tests discovered by those documents are committed before provider extraction.
+  - `docs/plans/2026-06-21-hook-provider-prd-redteam-report.json` exists with `"verdict": "pass"`.
+  - The final implementation note cites the validation commands and their pass/fail output.
+
+Phase 0 command thresholds:
+
+| Command | Required threshold |
+|---------|--------------------|
+| `bun test` | exit code 0 for the full suite |
+| `bun run typecheck` | exit code 0 |
+| `bun run build` | exit code 0 |
+| `agentlog doctor` | exit code 0 in the developer environment |
+| `node scripts/prd-redteam.mjs --output docs/plans/2026-06-21-hook-provider-prd-redteam-report.json` | exit code 0 and report JSON `"verdict": "pass"` |
+
+Phase 0 artifact status:
+
+| Artifact | Required status | Machine-check |
+|----------|-----------------|---------------|
+| `docs/plans/2026-06-21-hook-provider-current-behavior-coverage.md` | present before Phase 1 | `phase0-artifacts-exist` red-team check |
+| `docs/plans/2026-06-21-hook-provider-agent-readiness.md` | present before Phase 1, no open blocker | `phase0-artifacts-exist` red-team check plus reviewer read |
+| `docs/plans/2026-06-21-hook-provider-prd-redteam-report.json` | regenerated after PRD edits | JSON `"verdict": "pass"` |
 
 ## 1. Goal
 
@@ -33,7 +64,7 @@ The desired end state:
 - Existing Claude and Codex installs, doctor checks, uninstall behavior, and Daily Note output remain unchanged.
 - Hook provider lifecycle logic becomes registry-driven instead of hard-coded throughout `src/cli.ts`.
 - `agentlog hook --source hermes` accepts Hermes `pre_llm_call` shell-hook payloads and writes `[[hermes_<session_id>]]` dividers.
-- Hermes setup is documented first; AgentLog-owned mutation of `~/.hermes/config.yaml` is optional and explicitly scoped.
+- Hermes setup is docs-only for this PRD: `agentlog init --hermes` records metadata and prints manual setup, but AgentLog does not mutate `~/.hermes/config.yaml`.
 
 ## 2. Non-Goals
 
@@ -43,6 +74,7 @@ The desired end state:
 - Do not make EnglishAsk run for Hermes.
 - Do not silently include Hermes in `agentlog init --all`; keep `--all` as Claude+Codex for backward compatibility.
 - Do not regex-edit arbitrary YAML for `~/.hermes/config.yaml`.
+- Do not mutate `~/.hermes/config.yaml` in this PRD. Future YAML mutation requires a separate PRD and structured YAML parser.
 - Do not add a broad plugin framework beyond the hook-provider boundary.
 
 ## 3. Design
@@ -171,9 +203,11 @@ Phase 0: lock current behavior before abstraction.
 5. Validate agent-framework readiness:
    - PRD has concrete files, interfaces, naming, and test commands.
    - Tasks can be executed by an agent without asking for hidden decisions.
-   - Ambiguous decisions are isolated in §7 or gated as ⚠️ tasks.
+   - No Phase 1 implementation decision remains ambiguous.
    - Required docs/research are referenced by path.
 6. Patch any missing PRD detail discovered during readiness review before code changes.
+7. Run the red-team PRD gate and require a pass before Phase 1:
+   - `node scripts/prd-redteam.mjs --output docs/plans/2026-06-21-hook-provider-prd-redteam-report.json`
 
 Phase 1: extract provider registry without behavior changes.
 
@@ -194,18 +228,16 @@ Phase 2: add Hermes runtime provider.
 4. Update divider parsing to recognize `hermes`.
 5. Add Hermes fixture and parser/note-writer tests.
 6. Add `docs/hermes-hook-spec.md` and README setup docs.
+7. Hermes logs every valid `pre_llm_call` payload regardless of `extra.platform`; platform filtering is out of scope.
 
-Phase 3: optional Hermes install/doctor support.
-
-This phase is included in the PRD but should be implemented only if explicitly accepted after Phase 2 review.
+Phase 3: docs-only Hermes init/doctor support.
 
 1. Add `hermesHookInstalled?: boolean` to config.
-2. Add `agentlog init --hermes` that either:
-   - prints manual setup instructions, or
-   - safely writes `~/.hermes/config.yaml` with a real YAML parser.
+2. Add `agentlog init --hermes` that prints manual setup instructions and records AgentLog metadata.
 3. Add `agentlog uninstall --hermes`.
 4. Add doctor state for Hermes only when config metadata or installed state makes it relevant.
 5. Add `hermes hooks doctor` to manual QA instructions, not as a required automated test.
+6. Do not write Hermes YAML in this PRD.
 
 ### 3.4 Existing Code Impact
 
@@ -217,7 +249,7 @@ This phase is included in the PRD but should be implemented only if explicitly a
 | `src/schema/hook-input.ts` | Add Hermes `pre_llm_call` parser branch | Medium |
 | `src/note-writer.ts` | Recognize `hermes` in divider regex | Low |
 | `src/schema/daily-note.ts` | Type expansion only; formatting already source-parametric | Low |
-| `src/backfill.ts` | Keep Claude/Codex only; optionally make source validation use supported backfill sources, not all providers | Low |
+| `src/backfill.ts` | Keep Claude/Codex only; `agentlog backfill --source hermes` must fail with `Error: --source must be one of: all, claude, codex` | Low |
 | `README.md` | Document provider model and Hermes manual setup | Medium |
 | `docs/codex-hook-spec.md` | Leave Codex-specific; link to generic/Hermes docs if needed | Low |
 
@@ -264,13 +296,14 @@ This phase is included in the PRD but should be implemented only if explicitly a
 - [ ] Given: malformed Hermes payload missing `extra.user_message` / When: parser runs / Then: it throws a source-specific parse error.
 - [ ] Given: source `hermes` and session id `sess_abc` / When: Daily Note divider is built / Then: output is `- - - - [[hermes_sess_abc]]`.
 - [ ] Given: existing `[[hermes_sess_abc]]` divider / When: another Hermes prompt in same session is appended / Then: no duplicate divider is inserted.
-- [ ] Given: `agentlog backfill --source hermes` before Hermes backfill exists / When: command runs / Then: it fails clearly or is absent from allowed values.
+- [ ] Given: `agentlog backfill --source hermes` before Hermes backfill exists / When: command runs / Then: it exits non-zero and prints `Error: --source must be one of: all, claude, codex`.
 - [ ] Given: Hermes manual setup docs / When: user follows them / Then: configured shell hook command is `agentlog hook --source hermes`.
 
 ### Regression
 
 - [ ] Current behavior coverage matrix exists and every listed behavior has automated coverage or an explicit manual QA check.
 - [ ] Agent framework readiness checklist exists and has no unresolved blocker before implementation.
+- [ ] PRD red-team gate passes before Phase 1 implementation begins: `node scripts/prd-redteam.mjs --output docs/plans/2026-06-21-hook-provider-prd-redteam-report.json`.
 - [ ] Missing tests found in Phase 0 are added before provider extraction.
 - [ ] Existing Claude tests pass.
 - [ ] Existing Codex hook tests pass.
@@ -302,24 +335,25 @@ This phase is included in the PRD but should be implemented only if explicitly a
 - [ ] ✅ Phase 0 missing regression tests → verify: every high-risk current behavior has automated coverage before abstraction.
 - [ ] ✅ Phase 0 QA smoke plan → verify: manual commands and expected outcomes are listed, including isolated hook invocation.
 - [ ] ✅ Phase 0 agent-framework readiness review → verify: `docs/plans/2026-06-21-hook-provider-agent-readiness.md` lists executable tasks, blockers, and any PRD gaps.
-- [ ] ✅ Phase 0 PRD gap patch → verify: blockers from readiness review are resolved or moved to §7 before code changes.
+- [ ] ✅ Phase 0 PRD gap patch → verify: blockers from readiness review are resolved before code changes.
+- [ ] ✅ Phase 0 red-team gate → verify: `node scripts/prd-redteam.mjs --output docs/plans/2026-06-21-hook-provider-prd-redteam-report.json` passes before Phase 1.
 - [ ] ✅ Phase 1 research lock: read this PRD plus both research docs → verify: cite source files in implementation notes.
 - [ ] ✅ Add provider type/registry modules → verify: `bun test src/__tests__/hook-providers.test.ts`.
 - [ ] ✅ Wrap Claude provider around existing `claude-settings.ts` → verify: Claude CLI tests unchanged.
 - [ ] ✅ Wrap Codex provider around existing `codex-hooks.ts` and legacy `codex-settings.ts` cleanup → verify: Codex CLI tests unchanged.
-- [ ] ⚠️ Replace `src/cli.ts` provider branching with registry iteration → verify: `bun test src/__tests__/cli.test.ts src/__tests__/cli-codex.test.ts`.
+- [ ] ✅ Replace `src/cli.ts` provider branching with registry iteration → verify: `bun test src/__tests__/cli.test.ts src/__tests__/cli-codex.test.ts`.
 - [ ] ✅ Add Hermes parser fixture and parser branch → verify: `bun test src/__tests__/hook-input.test.ts`.
 - [ ] ✅ Add `hermes` source divider support → verify: `bun test src/__tests__/daily-note.test.ts src/__tests__/note-writer.test.ts`.
 - [ ] ✅ Add Hermes docs with manual setup → verify: docs mention `pre_llm_call`, `extra.user_message`, and `agentlog hook --source hermes`.
-- [ ] ⚠️ Decide whether `init --hermes` mutates YAML or prints manual setup → verify: decision logged in §8 before implementation.
-- [ ] ⚠️ If YAML mutation is accepted, add structured YAML dependency or a safe append-only writer → verify: tests cover preserving unrelated config.
+- [ ] ✅ Decide whether `init --hermes` mutates YAML or prints manual setup → verify: decision logged in §8 before implementation.
+- [ ] ✅ Keep `init --hermes` docs-only; do not add YAML mutation in this PRD → verify: tests prove Hermes config is not edited.
+- [ ] ✅ Keep Hermes out of backfill → verify: `agentlog backfill --source hermes` rejects with the allowed-source error.
 - [ ] ✅ Run full validation → verify: `bun test`, `bun run typecheck`, `agentlog doctor`.
 
 ## 7. Open Questions
 
-- Should `agentlog init --hermes` be runtime-only documentation output, or should it write `~/.hermes/config.yaml`?
-- If YAML mutation is implemented, is adding a YAML parser dependency acceptable?
-- Should Hermes log all `platform` values (`cli`, `telegram`, `discord`, etc.) or only `platform: "cli"` by default?
+These are deferred future-product questions. They are not Phase 1 or Phase 2 implementation blockers.
+
 - Should a future `agentlog init --providers claude,codex,hermes` replace expanding flag combinations?
 
 ## 8. Decision Log
@@ -329,6 +363,9 @@ This phase is included in the PRD but should be implemented only if explicitly a
 - 2026-06-21: `agentlog init --all` remains Claude+Codex to preserve existing semantics.
 - 2026-06-21: Hermes backfill is explicitly out of scope until transcript format is verified.
 - 2026-06-21: Phase 0 must lock current behavior with coverage, QA smoke checks, and agent-framework readiness before abstraction starts.
+- 2026-06-21: `agentlog init --hermes` is docs-only for this PRD: it records metadata and prints manual setup; it does not write `~/.hermes/config.yaml`.
+- 2026-06-21: `agentlog backfill --source hermes` is rejected until Hermes transcript backfill is separately specified.
+- 2026-06-21: Hermes runtime logging accepts all valid Hermes `pre_llm_call` payloads and does not filter by `extra.platform`.
 
 ## 9. Handoff Snapshot
 
@@ -338,18 +375,21 @@ Current status:
   - `docs/research/2026-06-21-hermes-agentlog-research.md`
   - `docs/research/2026-06-21-hook-provider-abstraction-research.md`
 - This PRD defines a two-phase implementation: provider extraction, then Hermes.
-- First implementation PRD phase is now Phase 0: current behavior coverage and agent readiness.
-- No code implementation has been started.
+- Phase 0 coverage/readiness artifacts now exist:
+  - `docs/plans/2026-06-21-hook-provider-current-behavior-coverage.md`
+  - `docs/plans/2026-06-21-hook-provider-agent-readiness.md`
+- Implementation has started on the `feature/prd-redteam-tool` branch after Phase 0 artifacts were created.
+- The red-team report must be regenerated after every PRD change and must pass before this work is considered ready for review.
 
 Next recommended step:
 
-1. Review this PRD for scope, especially Hermes config mutation.
-2. Complete Phase 0 coverage and readiness documents.
-3. Run spec review.
-4. Implement Phase 1 behavior-preserving provider extraction.
+1. Regenerate `docs/plans/2026-06-21-hook-provider-prd-redteam-report.json`.
+2. Run full validation: `bun test`, `bun run typecheck`, `bun run build`, `agentlog doctor`.
+3. Review the implementation diff only after the red-team report has `"verdict": "pass"`.
 
 ## 10. Changelog
 
 | rev | date | summary |
 |-----|------|---------|
 | 1 | 2026-06-21 | Initial PRD for provider abstraction followed by Hermes |
+| 2 | 2026-06-21 | Closed Phase 0 hard gate, docs-only Hermes init decision, and backfill-source rejection contract |

@@ -79,7 +79,7 @@ describe("PRD red-team verifier", () => {
     expect(result.stdout).toContain("prd-redteam: pass");
 
     const codexArgs = readFileSync(fakeCodex.argsFile, "utf-8");
-    expect(codexArgs).toStartWith("exec\n-m\ngpt-5.3-codex-spark\n-c\n");
+    expect(codexArgs).toStartWith("exec\n--skip-git-repo-check\n--ignore-rules\n--ephemeral\n-m\ngpt-5.3-codex-spark\n-c\n");
     expect(codexArgs).toContain('model_reasoning_effort="low"');
     expect(codexArgs).toContain("\n--\n");
     expect(codexArgs).toContain("current behavior coverage tests before abstraction");
@@ -111,5 +111,15 @@ describe("PRD red-team verifier", () => {
     expect(report.mechanical.checks.some((item: { id: string; passed: boolean }) =>
       item.id === "phase0-coverage-matrix" && item.passed === false
     )).toBe(true);
+  });
+
+  it("passes mechanical-only triage when --skip-model is set", async () => {
+    const result = await runRedteam(["--prd", PRD_PATH, "--skip-model", "--json"]);
+
+    expect(result.exitCode).toBe(0);
+    const report = JSON.parse(result.stdout);
+    expect(report.verdict).toBe("pass");
+    expect(report.mechanical.verdict).toBe("pass");
+    expect(report.model.invoked).toBe(false);
   });
 });
