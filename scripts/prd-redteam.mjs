@@ -169,6 +169,7 @@ function mechanicalChecks(prd, rootDir = process.cwd()) {
         "Do not make EnglishAsk run for Hermes",
         "Do not silently include Hermes in `agentlog init --all`",
         "Do not regex-edit arbitrary YAML for `~/.hermes/config.yaml`",
+        "Do not mutate Hermes YAML without a structured parser",
       ])
     ),
     check(
@@ -208,11 +209,14 @@ function mechanicalChecks(prd, rootDir = process.cwd()) {
       ])
     ),
     check(
-      "init-hermes-decision",
-      "PRD resolves init --hermes as docs-only without Hermes YAML mutation",
+      "init-hermes-automation-decision",
+      "PRD resolves init --hermes as structured Hermes YAML automation with profile support",
       includesAll(prd, [
-        "`agentlog init --hermes` is docs-only",
-        "does not write `~/.hermes/config.yaml`",
+        "`agentlog init --hermes` now owns structured Hermes config mutation",
+        "records target profiles",
+        "--hermes-profile <name>",
+        "--hermes-all-profiles",
+        "real Hermes-profile smoke",
       ])
     ),
     check(
@@ -238,7 +242,8 @@ Pass only if the PRD is executable by a coding agent and fully covers the user's
 - QA smoke validation tests
 - agent-framework readiness validation
 - PRD gap patching before provider code changes
-- later migration to Hermes only after provider abstraction
+- provider lifecycle abstraction before Hermes automation
+- Hermes config automation with profile support only through structured YAML parsing
 
 Fail if any required Phase 0 deliverable, guardrail, or verification criterion is missing or ambiguous.
 

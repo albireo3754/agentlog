@@ -13,6 +13,10 @@ export type HookProviderState =
 export interface HookInstallContext {
   vault: string;
   plain: boolean;
+  homeDir?: string;
+  hermesHome?: string;
+  hermesProfiles?: string[];
+  hermesAllProfiles?: boolean;
 }
 
 export interface HookInstallResult {
@@ -33,7 +37,7 @@ export interface HookProvider {
   configFlag: "claudeHookInstalled" | "codexHookInstalled" | "hermesHookInstalled";
   command: string;
   install(ctx: HookInstallContext): HookInstallResult;
-  uninstall(): HookUninstallResult;
-  inspect(): HookProviderState;
-  isRelevant(config: AgentLogConfig | null): boolean;
+  uninstall(ctx?: Partial<HookInstallContext>): HookUninstallResult;
+  inspect(ctx?: Partial<HookInstallContext>): HookProviderState;
+  isRelevant(config: AgentLogConfig | null, ctx?: Partial<HookInstallContext>): boolean;
 }

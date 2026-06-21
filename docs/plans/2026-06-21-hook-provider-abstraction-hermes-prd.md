@@ -64,7 +64,7 @@ The desired end state:
 - Existing Claude and Codex installs, doctor checks, uninstall behavior, and Daily Note output remain unchanged.
 - Hook provider lifecycle logic becomes registry-driven instead of hard-coded throughout `src/cli.ts`.
 - `agentlog hook --source hermes` accepts Hermes `pre_llm_call` shell-hook payloads and writes `[[hermes_<session_id>]]` dividers.
-- Hermes setup is docs-only for this PRD: `agentlog init --hermes` records metadata and prints manual setup, but AgentLog does not mutate `~/.hermes/config.yaml`.
+- Hermes setup is automated for this PRD: `agentlog init --hermes` writes the AgentLog shell hook to Hermes config with structured YAML parsing, records selected profiles, and `agentlog uninstall --hermes` removes only AgentLog's command.
 
 ## 2. Non-Goals
 
@@ -74,7 +74,7 @@ The desired end state:
 - Do not make EnglishAsk run for Hermes.
 - Do not silently include Hermes in `agentlog init --all`; keep `--all` as Claude+Codex for backward compatibility.
 - Do not regex-edit arbitrary YAML for `~/.hermes/config.yaml`.
-- Do not mutate `~/.hermes/config.yaml` in this PRD. Future YAML mutation requires a separate PRD and structured YAML parser.
+- Do not mutate Hermes YAML without a structured parser, idempotency tests, invalid-YAML failure tests, and AgentLog-only unregister tests.
 - Do not add a broad plugin framework beyond the hook-provider boundary.
 
 ## 3. Design
@@ -230,14 +230,15 @@ Phase 2: add Hermes runtime provider.
 6. Add `docs/hermes-hook-spec.md` and README setup docs.
 7. Hermes logs every valid `pre_llm_call` payload regardless of `extra.platform`; platform filtering is out of scope.
 
-Phase 3: docs-only Hermes init/doctor support.
+Phase 3: Hermes init/doctor/uninstall automation.
 
-1. Add `hermesHookInstalled?: boolean` to config.
-2. Add `agentlog init --hermes` that prints manual setup instructions and records AgentLog metadata.
-3. Add `agentlog uninstall --hermes`.
-4. Add doctor state for Hermes only when config metadata or installed state makes it relevant.
-5. Add `hermes hooks doctor` to manual QA instructions, not as a required automated test.
-6. Do not write Hermes YAML in this PRD.
+1. Add `hermesHookInstalled?: boolean` and `hermesProfiles?: string[]` to config.
+2. Add `src/hermes-config.ts` for structured YAML read/write of `hooks.pre_llm_call`.
+3. Add `agentlog init --hermes` that writes `agentlog hook --source hermes` to the default Hermes config and records metadata.
+4. Add repeated `--hermes-profile <name>` and `--hermes-all-profiles` support for named Hermes profile configs.
+5. Add `agentlog uninstall --hermes` that removes only AgentLog's command from configured profiles.
+6. Add doctor state for Hermes only when config metadata or installed state makes it relevant; configured missing/partial hooks fail.
+7. Add a real Hermes-profile smoke when the `hermes` binary is available.
 
 ### 3.4 Existing Code Impact
 
@@ -250,7 +251,7 @@ Phase 3: docs-only Hermes init/doctor support.
 | `src/note-writer.ts` | Recognize `hermes` in divider regex | Low |
 | `src/schema/daily-note.ts` | Type expansion only; formatting already source-parametric | Low |
 | `src/backfill.ts` | Keep Claude/Codex only; `agentlog backfill --source hermes` must fail with `Error: --source must be one of: all, claude, codex` | Low |
-| `README.md` | Document provider model and Hermes manual setup | Medium |
+| `README.md` | Document provider model and Hermes automated setup | Medium |
 | `docs/codex-hook-spec.md` | Leave Codex-specific; link to generic/Hermes docs if needed | Low |
 
 ### 3.5 Naming Conventions
@@ -297,7 +298,7 @@ Phase 3: docs-only Hermes init/doctor support.
 - [ ] Given: source `hermes` and session id `sess_abc` / When: Daily Note divider is built / Then: output is `- - - - [[hermes_sess_abc]]`.
 - [ ] Given: existing `[[hermes_sess_abc]]` divider / When: another Hermes prompt in same session is appended / Then: no duplicate divider is inserted.
 - [ ] Given: `agentlog backfill --source hermes` before Hermes backfill exists / When: command runs / Then: it exits non-zero and prints `Error: --source must be one of: all, claude, codex`.
-- [ ] Given: Hermes manual setup docs / When: user follows them / Then: configured shell hook command is `agentlog hook --source hermes`.
+- [ ] Given: Hermes automated setup docs / When: user follows them / Then: configured shell hook command is `agentlog hook --source hermes`.
 
 ### Regression
 
@@ -325,7 +326,7 @@ Phase 3: docs-only Hermes init/doctor support.
 |------|--------|------------|
 | Provider abstraction becomes too broad | Larger diff, harder review | Scope only install/uninstall/inspect/source parsing |
 | Existing CLI output changes unexpectedly | Test breakage and user confusion | Preserve current wording where practical; update tests only for intentional changes |
-| Hermes YAML mutation corrupts config | High user impact | Make YAML mutation optional; require parser if implemented |
+| Hermes YAML mutation corrupts config | High user impact | Use structured YAML parser; reject unsupported YAML; test idempotency and AgentLog-only removal |
 | Unknown source fallback masks bad config | Mislabelled logs | Only default to Claude when `--source` is absent |
 | Hermes backfill assumed too early | False feature claim | Exclude from scope |
 
@@ -344,9 +345,10 @@ Phase 3: docs-only Hermes init/doctor support.
 - [ ] ✅ Replace `src/cli.ts` provider branching with registry iteration → verify: `bun test src/__tests__/cli.test.ts src/__tests__/cli-codex.test.ts`.
 - [ ] ✅ Add Hermes parser fixture and parser branch → verify: `bun test src/__tests__/hook-input.test.ts`.
 - [ ] ✅ Add `hermes` source divider support → verify: `bun test src/__tests__/daily-note.test.ts src/__tests__/note-writer.test.ts`.
-- [ ] ✅ Add Hermes docs with manual setup → verify: docs mention `pre_llm_call`, `extra.user_message`, and `agentlog hook --source hermes`.
-- [ ] ✅ Decide whether `init --hermes` mutates YAML or prints manual setup → verify: decision logged in §8 before implementation.
-- [ ] ✅ Keep `init --hermes` docs-only; do not add YAML mutation in this PRD → verify: tests prove Hermes config is not edited.
+- [ ] ✅ Add Hermes docs with automated setup → verify: docs mention `pre_llm_call`, profiles, `extra.user_message`, and `agentlog hook --source hermes`.
+- [ ] ✅ Decide whether `init --hermes` mutates YAML or prints setup instructions → verify: decision logged in §8 before implementation.
+- [ ] ✅ Automate `init --hermes` with structured YAML mutation → verify: `bun test src/__tests__/hermes-config.test.ts src/__tests__/cli-codex.test.ts`.
+- [ ] ✅ Add real Hermes profile smoke → verify: CLI test runs `hermes -p smoke hooks list` when Hermes is installed.
 - [ ] ✅ Keep Hermes out of backfill → verify: `agentlog backfill --source hermes` rejects with the allowed-source error.
 - [ ] ✅ Run full validation → verify: `bun test`, `bun run typecheck`, `agentlog doctor`.
 
@@ -363,7 +365,7 @@ These are deferred future-product questions. They are not Phase 1 or Phase 2 imp
 - 2026-06-21: `agentlog init --all` remains Claude+Codex to preserve existing semantics.
 - 2026-06-21: Hermes backfill is explicitly out of scope until transcript format is verified.
 - 2026-06-21: Phase 0 must lock current behavior with coverage, QA smoke checks, and agent-framework readiness before abstraction starts.
-- 2026-06-21: `agentlog init --hermes` is docs-only for this PRD: it records metadata and prints manual setup; it does not write `~/.hermes/config.yaml`.
+- 2026-06-22: `agentlog init --hermes` now owns structured Hermes config mutation because Hermes is the third provider and lifecycle abstraction must cover install, inspect, and uninstall. It writes/removes only `agentlog hook --source hermes` and records target profiles.
 - 2026-06-21: `agentlog backfill --source hermes` is rejected until Hermes transcript backfill is separately specified.
 - 2026-06-21: Hermes runtime logging accepts all valid Hermes `pre_llm_call` payloads and does not filter by `extra.platform`.
 
@@ -392,4 +394,5 @@ Next recommended step:
 | rev | date | summary |
 |-----|------|---------|
 | 1 | 2026-06-21 | Initial PRD for provider abstraction followed by Hermes |
-| 2 | 2026-06-21 | Closed Phase 0 hard gate, docs-only Hermes init decision, and backfill-source rejection contract |
+| 2 | 2026-06-21 | Closed Phase 0 hard gate, initial manual Hermes init decision, and backfill-source rejection contract |
+| 3 | 2026-06-22 | Revised Hermes lifecycle scope to structured YAML automation, profile support, and real Hermes smoke |

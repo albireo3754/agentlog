@@ -91,8 +91,10 @@ agentlog init --codex ~/Obsidian
 # Claude + Codex
 agentlog init --all ~/Obsidian
 
-# Hermes Agent (manual shell-hook setup)
+# Hermes Agent
 agentlog init --hermes ~/Obsidian
+agentlog init --hermes --hermes-profile work ~/Obsidian
+agentlog init --hermes --hermes-all-profiles ~/Obsidian
 
 # Plain folder
 agentlog init --plain ~/notes
@@ -112,7 +114,7 @@ Run `agentlog init` without arguments to auto-detect installed vaults.
 
 The `default = --all` variant is intentionally not supported. `agentlog init` stays Claude-first for backward compatibility and to avoid failing on machines without Codex CLI.
 
-`agentlog init --hermes` records Hermes metadata and prints the manual `~/.hermes/config.yaml` snippet:
+`agentlog init --hermes` records Hermes metadata and writes this shell hook under `hooks.pre_llm_call` in the selected Hermes config:
 
 ```yaml
 hooks:
@@ -120,11 +122,11 @@ hooks:
     - command: "agentlog hook --source hermes"
 ```
 
-AgentLog does not edit Hermes YAML automatically. See `docs/hermes-hook-spec.md`.
+By default it edits `~/.hermes/config.yaml`. Use `--hermes-profile <name>` for `~/.hermes/profiles/<name>/config.yaml`, repeat the flag for multiple profiles, or use `--hermes-all-profiles` for default plus every existing named profile. AgentLog uses structured YAML parsing and only adds/removes its own command. See `docs/hermes-hook-spec.md`.
 
 ### That's It
 
-Use Claude Code, Codex, or Hermes normally. Claude and Codex prompts are logged from `UserPromptSubmit`; Hermes prompts are logged from `pre_llm_call` after manual setup.
+Use Claude Code, Codex, or Hermes normally. Claude and Codex prompts are logged from `UserPromptSubmit`; Hermes prompts are logged from `pre_llm_call` after Hermes accepts/trusts the shell hook.
 
 ### Backfill Missed Prompts
 
@@ -191,15 +193,15 @@ Current CLI:
 
 | Command | Description |
 |---------|-------------|
-| `agentlog init [vault] [--plain] [--claude\|--codex\|--hermes\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex hook, `--hermes`: manual Hermes setup metadata, `--all`: Claude+Codex |
+| `agentlog init [vault] [--plain] [--claude\|--codex\|--hermes\|--all]` | Configure vault and install integrations. `--claude` (default): Claude hook, `--codex`: Codex hook, `--hermes`: Hermes shell hook config, `--all`: Claude+Codex |
 | `agentlog detect` | List detected Obsidian vaults and CLI status |
 | `agentlog backfill [date] [--source all\|claude\|codex] [--dry-run] [--format text\|json]` | Scan local Claude/Codex session JSONL files and append missing prompts to the Daily Note |
-| `agentlog init --hermes <vault>` | Record Hermes metadata and print manual `pre_llm_call` shell-hook setup |
+| `agentlog init --hermes [--hermes-profile <name>...] [--hermes-all-profiles] <vault>` | Write Hermes `pre_llm_call` shell-hook config and record profile metadata |
 | `agentlog codex-debug <prompt>` | Run `codex exec "<prompt>"` with Codex hook auto-registered |
 | `agentlog doctor` | Run health checks for the binary, vault, Claude hook registration/format, and Obsidian CLI. Also checks Codex/Hermes hook status if configured |
 | `agentlog open` | Open today's Daily Note in Obsidian (requires CLI 1.12.4+) |
 | `agentlog version` | Print AgentLog version. In `dev` builds, also shows channel and commit |
-| `agentlog uninstall [-y] [--codex\|--hermes\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex hook and legacy notify metadata, `--hermes`: remove Hermes metadata only, `--all`: remove all AgentLog-owned integration state |
+| `agentlog uninstall [-y] [--codex\|--hermes\|--all]` | `default`: Remove Claude hook + config, `--codex`: Remove Codex hook and legacy notify metadata, `--hermes`: remove AgentLog's Hermes hook from configured profiles and clear metadata, `--all`: remove all AgentLog-owned integration state |
 | `agentlog hook` | Invoked automatically by Claude Code or Codex (not for direct use) |
 | `agentlog codex-notify` | Legacy handler for older Codex `notify` installs |
 
@@ -213,7 +215,8 @@ Current CLI:
 | `plain` | `false` | Plain mode that writes simple markdown files without Obsidian integration |
 | `claudeHookInstalled` | `false` | Records that AgentLog expects the Claude hook to be installed, so `doctor` does not downgrade a missing Claude hook in `--all` installs |
 | `codexHookInstalled` | `false` | Records that AgentLog expects the Codex hook to be installed, so `doctor` can detect partial damage |
-| `hermesHookInstalled` | `false` | Records that AgentLog expects a manual Hermes hook to be present, so `doctor` can warn when missing |
+| `hermesHookInstalled` | `false` | Records that AgentLog expects Hermes hook config to be present, so `doctor` can detect partial damage |
+| `hermesProfiles` | unset | Hermes profiles selected by `init --hermes`; used by `doctor` and `uninstall --hermes` |
 | `codexNotifyRestore` | unset | Legacy metadata for older Codex `notify` installs |
 | `englishAsk` | unset | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is `true` |
 

@@ -2,15 +2,7 @@
 
 AgentLog supports Hermes Agent live prompt capture through the Hermes `pre_llm_call` shell hook.
 
-## Manual Setup
-
-Add this to `~/.hermes/config.yaml`:
-
-```yaml
-hooks:
-  pre_llm_call:
-    - command: "agentlog hook --source hermes"
-```
+## Setup
 
 Run:
 
@@ -18,7 +10,25 @@ Run:
 agentlog init --hermes ~/Obsidian
 ```
 
-AgentLog records local metadata and prints the manual setup snippet. It does not mutate `~/.hermes/config.yaml`.
+AgentLog writes this command to `hooks.pre_llm_call` in `~/.hermes/config.yaml`:
+
+```yaml
+hooks:
+  pre_llm_call:
+    - command: "agentlog hook --source hermes"
+```
+
+Named Hermes profiles are supported:
+
+```bash
+agentlog init --hermes --hermes-profile work ~/Obsidian
+agentlog init --hermes --hermes-profile alpha --hermes-profile beta ~/Obsidian
+agentlog init --hermes --hermes-all-profiles ~/Obsidian
+```
+
+`--hermes-profile <name>` targets `~/.hermes/profiles/<name>/config.yaml`; `--hermes-all-profiles` targets the default config plus every existing named profile config. `agentlog uninstall --hermes` removes only `agentlog hook --source hermes` from the configured profiles and clears AgentLog metadata.
+
+AgentLog uses structured YAML parsing. It rejects unsupported YAML instead of regex-editing arbitrary `config.yaml` content.
 
 ## Input Contract
 
@@ -59,4 +69,4 @@ AgentLog emits no stdout on successful hook execution, so it does not inject Her
 
 - No Hermes backfill until transcript format is separately verified.
 - No EnglishAsk evaluation for Hermes.
-- No automatic YAML mutation without a structured YAML parser decision.
+- No broad Hermes plugin framework; AgentLog uses the documented shell-hook surface.

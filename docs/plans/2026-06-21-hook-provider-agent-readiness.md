@@ -11,7 +11,7 @@
 | Provider registry | PRD §3.2, existing Claude/Codex modules | `src/hook-providers/*` | `bun test src/__tests__/hook-providers.test.ts` |
 | Hermes parser | Hermes fixture and research docs | `parseHookInput(..., { source: "hermes" })` | `bun test src/__tests__/hook-input.test.ts` |
 | Source-aware writing | `SourceType` expansion and divider regex | `[[hermes_<session_id>]]` without duplicate divider | `bun test src/__tests__/daily-note.test.ts src/__tests__/note-writer.test.ts` |
-| Manual Hermes setup | research Option B | docs + `init --hermes` metadata only | `bun test src/__tests__/cli-codex.test.ts` |
+| Hermes config automation | research Option A + structured YAML parser guardrail | default/profile/all-profile config write-remove lifecycle | `bun test src/__tests__/hermes-config.test.ts src/__tests__/cli-codex.test.ts` |
 | Red-team gate | PRD + coverage/readiness docs | mechanical + model report | `bun run prd:redteam` |
 
 ## Decisions Locked
@@ -19,7 +19,7 @@
 | Decision | Status | Reason |
 |----------|--------|--------|
 | `init --all` excludes Hermes | locked | avoids surprising privileged Hermes hook config |
-| Hermes YAML mutation | deferred | no YAML parser dependency approved |
+| Hermes YAML mutation | locked | allowed only through structured YAML parsing; no regex mutation |
 | Hermes backfill | out of scope | transcript format not verified |
 | EnglishAsk for Hermes | out of scope | Codex-specific evaluator should not run accidentally |
 

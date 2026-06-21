@@ -32,7 +32,9 @@ Lock current Claude and Codex behavior before provider extraction.
 | Hermes parser accepts wrong event or wrong field | `src/__tests__/hook-input.test.ts` |
 | Unknown explicit source silently becomes Claude | `src/__tests__/cli-codex.test.ts` |
 | Hermes divider duplicates in same session | `src/__tests__/note-writer.test.ts` |
-| `init --hermes` edits privileged YAML | `src/__tests__/cli-codex.test.ts` verifies no `~/.hermes/config.yaml` write |
+| Hermes YAML mutation corrupts unrelated config | `src/__tests__/hermes-config.test.ts` verifies structured YAML mutation, idempotency, invalid YAML rejection, and AgentLog-only unregister |
+| Hermes profile targeting regresses | `src/__tests__/hermes-config.test.ts`, `src/__tests__/cli-codex.test.ts` cover default, repeated `--hermes-profile`, and `--hermes-all-profiles` |
+| Real Hermes CLI integration drifts from config shape | `src/__tests__/cli-codex.test.ts` includes a real `hermes -p smoke hooks list` smoke when the Hermes binary is available |
 
 ## QA Smoke
 

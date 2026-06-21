@@ -9,7 +9,7 @@ const CLI_PATH = fileURLToPath(new URL("../cli.ts", import.meta.url));
 
 async function runCli(
   args: string[],
-  opts: { HOME?: string; AGENTLOG_CONFIG_DIR?: string; PATH?: string; AGENTLOG_ENGLISHASK_EVAL?: string } = {}
+  opts: { HOME?: string; AGENTLOG_CONFIG_DIR?: string; PATH?: string; AGENTLOG_ENGLISHASK_EVAL?: string; HERMES_HOME?: string } = {}
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
   const env = { ...process.env, ...opts };
   const proc = Bun.spawn(
@@ -318,10 +318,12 @@ describe("cli codex commands", () => {
     expect(config.hermesHookInstalled).toBeUndefined();
   });
 
-  it("init --hermes records metadata and prints manual setup without editing Hermes config", async () => {
+  it("init --hermes writes the default Hermes config and records metadata", async () => {
     const vault = join(tmpHome, "Obsidian");
     const cfgDir = join(tmpHome, ".agentlog");
     mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    mkdirSync(join(tmpHome, ".hermes"), { recursive: true });
+    writeFileSync(join(tmpHome, ".hermes", "config.yaml"), "display:\n  theme: dark\nhooks: {}\n", "utf-8");
 
     const { stdout, stderr, exitCode } = await runCli(["init", "--hermes", vault], {
       HOME: tmpHome,
@@ -330,11 +332,71 @@ describe("cli codex commands", () => {
 
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
-    expect(stdout).toContain("Hermes manual setup required");
+    expect(stdout).toContain("Hermes hook registered");
     expect(stdout).toContain("agentlog hook --source hermes");
     const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
     expect(config.hermesHookInstalled).toBe(true);
+    expect(config.hermesProfiles).toEqual(["default"]);
+    const hermesConfig = readFileSync(join(tmpHome, ".hermes", "config.yaml"), "utf-8");
+    expect(hermesConfig).toContain("theme: dark");
+    expect(hermesConfig).toContain("pre_llm_call");
+    expect(hermesConfig).toContain("agentlog hook --source hermes");
+  });
+
+  it("init --hermes supports multiple named profiles", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    for (const profile of ["alpha", "beta"]) {
+      mkdirSync(join(tmpHome, ".hermes", "profiles", profile), { recursive: true });
+      writeFileSync(join(tmpHome, ".hermes", "profiles", profile, "config.yaml"), "hooks: {}\n", "utf-8");
+    }
+
+    const { stdout, stderr, exitCode } = await runCli(
+      ["init", "--hermes", "--hermes-profile", "alpha", "--hermes-profile", "beta", vault],
+      {
+        HOME: tmpHome,
+        AGENTLOG_CONFIG_DIR: cfgDir,
+      }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stderr).toBe("");
+    expect(stdout).toContain("Hermes hook registered");
+    for (const profile of ["alpha", "beta"]) {
+      expect(readFileSync(join(tmpHome, ".hermes", "profiles", profile, "config.yaml"), "utf-8")).toContain(
+        "agentlog hook --source hermes"
+      );
+    }
     expect(existsSync(join(tmpHome, ".hermes", "config.yaml"))).toBe(false);
+    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
+    expect(config.hermesProfiles).toEqual(["alpha", "beta"]);
+  });
+
+  it("init --hermes --hermes-all-profiles writes default and every existing profile config", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    for (const profile of ["alpha", "beta"]) {
+      mkdirSync(join(tmpHome, ".hermes", "profiles", profile), { recursive: true });
+      writeFileSync(join(tmpHome, ".hermes", "profiles", profile, "config.yaml"), "hooks: {}\n", "utf-8");
+    }
+
+    const { exitCode } = await runCli(["init", "--hermes", "--hermes-all-profiles", vault], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).toBe(0);
+    for (const path of [
+      join(tmpHome, ".hermes", "config.yaml"),
+      join(tmpHome, ".hermes", "profiles", "alpha", "config.yaml"),
+      join(tmpHome, ".hermes", "profiles", "beta", "config.yaml"),
+    ]) {
+      expect(readFileSync(path, "utf-8")).toContain("agentlog hook --source hermes");
+    }
+    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
+    expect(config.hermesProfiles).toEqual(["default", "alpha", "beta"]);
   });
 
   it("codex-notify writes a Daily Note entry and forwards the saved notify command", async () => {
@@ -861,6 +923,42 @@ describe("cli codex commands", () => {
     expect(existsSync(join(cfgDir, "config.json"))).toBe(false);
   });
 
+  it("uninstall --hermes removes AgentLog hook from configured Hermes profiles", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    for (const profile of ["alpha", "beta"]) {
+      mkdirSync(join(tmpHome, ".hermes", "profiles", profile), { recursive: true });
+      writeFileSync(
+        join(tmpHome, ".hermes", "profiles", profile, "config.yaml"),
+        'hooks:\n  pre_llm_call:\n    - command: echo keep\n    - command: agentlog hook --source hermes\n',
+        "utf-8"
+      );
+    }
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({ vault, plain: true, hermesHookInstalled: true, hermesProfiles: ["alpha", "beta"] }),
+      "utf-8"
+    );
+
+    const { stdout, exitCode } = await runCli(["uninstall", "--hermes", "-y"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Hermes hook removed");
+    for (const profile of ["alpha", "beta"]) {
+      const content = readFileSync(join(tmpHome, ".hermes", "profiles", profile, "config.yaml"), "utf-8");
+      expect(content).toContain("command: echo keep");
+      expect(content).not.toContain("agentlog hook --source hermes");
+    }
+    const config = JSON.parse(readFileSync(join(cfgDir, "config.json"), "utf-8"));
+    expect(config.hermesHookInstalled).toBeUndefined();
+    expect(config.hermesProfiles).toBeUndefined();
+  });
+
   it("default uninstall warns when Codex hooks need migration", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
@@ -1068,7 +1166,7 @@ describe("cli codex commands", () => {
     expect(stdout).toContain("agentlog init --codex");
   });
 
-  it("doctor warns when Hermes metadata exists but manual hook is missing", async () => {
+  it("doctor fails when Hermes metadata expects an installed hook but it is missing", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
     mkdirSync(vault, { recursive: true });
@@ -1084,8 +1182,8 @@ describe("cli codex commands", () => {
       AGENTLOG_CONFIG_DIR: cfgDir,
     });
 
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("⚠️ hermes");
+    expect(exitCode).not.toBe(0);
+    expect(stdout).toContain("❌ hermes");
     expect(stdout).toContain("hook command not detected");
   });
 
@@ -1114,5 +1212,61 @@ describe("cli codex commands", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("✅ hermes");
     expect(stdout).toContain("hook command present");
+  });
+
+  it("runs a real Hermes-profile smoke through init, Hermes hooks list, hook fixture, doctor, and uninstall", async () => {
+    const hermesBin = Bun.which("hermes");
+    if (!hermesBin) return;
+
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const profileHome = join(tmpHome, ".hermes", "profiles", "smoke");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    mkdirSync(profileHome, { recursive: true });
+    writeFileSync(join(profileHome, "config.yaml"), "hooks: {}\n", "utf-8");
+
+    const init = await runCli(["init", "--plain", "--hermes", "--hermes-profile", "smoke", vault], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+      HERMES_HOME: profileHome,
+    });
+    expect(init.exitCode).toBe(0);
+
+    const list = Bun.spawnSync([hermesBin, "-p", "smoke", "hooks", "list"], {
+      env: { ...process.env, HOME: tmpHome },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const listOutput = `${list.stdout.toString()}${list.stderr.toString()}`;
+    expect(list.exitCode).toBe(0);
+    expect(listOutput).toContain("agentlog hook --source hermes");
+
+    const proc = Bun.spawn([BUN_BIN, "run", CLI_PATH, "hook", "--source", "hermes"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, HOME: tmpHome, AGENTLOG_CONFIG_DIR: cfgDir },
+    });
+    proc.stdin.write(fixture("hermes-pre-llm-call.json"));
+    proc.stdin.end();
+    expect(await proc.exited).toBe(0);
+    expect(readFileSync(findPlainNotePath(vault), "utf-8")).toContain("Hermes prompt capture");
+
+    const doctor = await runCli(["doctor"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+      HERMES_HOME: profileHome,
+    });
+    expect(doctor.exitCode).toBe(0);
+    expect(doctor.stdout).toContain("✅ hermes");
+
+    const uninstall = await runCli(["uninstall", "--hermes", "-y"], {
+      HOME: tmpHome,
+      AGENTLOG_CONFIG_DIR: cfgDir,
+      HERMES_HOME: profileHome,
+    });
+    expect(uninstall.exitCode).toBe(0);
+    expect(readFileSync(join(profileHome, "config.yaml"), "utf-8")).not.toContain("agentlog hook --source hermes");
   });
 });
