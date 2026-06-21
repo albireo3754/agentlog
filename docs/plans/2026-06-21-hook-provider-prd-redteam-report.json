@@ -1,0 +1,109 @@
+{
+  "checkedAt": "2026-06-21T07:35:31.844Z",
+  "prd": "docs/plans/2026-06-21-hook-provider-abstraction-hermes-prd.md",
+  "verdict": "fail",
+  "mechanical": {
+    "verdict": "pass",
+    "total": 13,
+    "passed": 13,
+    "failed": 0,
+    "checks": [
+      {
+        "id": "required-sections",
+        "description": "PRD has all execution sections from work guide through changelog",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "third-provider-rationale",
+        "description": "Goal explains why abstraction is justified only at Claude+Codex+Hermes",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "phase0-before-phase1",
+        "description": "Phase 0 behavior lock appears before provider extraction",
+        "passed": true,
+        "evidence": "Phase 0 index=5443, Phase 1 index=6452"
+      },
+      {
+        "id": "phase0-coverage-matrix",
+        "description": "Phase 0 requires current behavior coverage matrix before refactoring",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "phase0-missing-tests",
+        "description": "Phase 0 requires missing regression tests before provider extraction",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "phase0-qa-smoke",
+        "description": "Phase 0 lists QA smoke commands and isolated hook fixture invocation",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "phase0-agent-readiness",
+        "description": "Phase 0 requires agent-framework readiness review and PRD gap patching",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "non-goals-guardrails",
+        "description": "PRD excludes risky or out-of-scope Hermes behavior",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "provider-interface",
+        "description": "PRD defines a bounded HookProvider interface and target mapping",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "hermes-runtime-contract",
+        "description": "PRD captures Hermes runtime input, parser, and divider behavior",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "negative-security-tests",
+        "description": "Verification includes unknown source, stdout, and unsupported provider negatives",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "research-links",
+        "description": "Handoff references both research documents needed by implementation agents",
+        "passed": true,
+        "evidence": ""
+      },
+      {
+        "id": "open-decisions",
+        "description": "YAML mutation and init --hermes behavior remain explicit open questions",
+        "passed": true,
+        "evidence": ""
+      }
+    ]
+  },
+  "model": {
+    "invoked": true,
+    "verdict": "fail",
+    "findings": [
+      {
+        "severity": "high",
+        "message": "spawnSync codex ETIMEDOUT",
+        "evidence": "codex exec failed to start or timed out"
+      }
+    ],
+    "missingRequirements": [],
+    "stdout": "",
+    "stderr": "Reading additional input from stdin...\n2026-06-21T07:34:31.987671Z  WARN codex_features: unknown feature key in config: experimental_use_rmcp_client\n2026-06-21T07:34:32.574532Z  WARN codex_core_plugins::manifest: ignoring interface.defaultPrompt[0]: prompt must be at most 128 characters path=/Users/pray/.codex/.tmp/plugins/plugins/ngs-analysis/.codex-plugin/plugin.json\n2026-06-21T07:34:32.576839Z  WARN codex_core_plugins::manifest: ignoring interface.defaultPrompt[0]: prompt must be at most 128 characters path=/Users/pray/.codex/.tmp/plugins/plugins/ngs-analysis/.codex-plugin/plugin.json\nOpenAI Codex v0.141.0\n--------\nworkdir: /Users/pray/worktrees/agentlog-prd-redteam\nmodel: gpt-5.3-codex-spark\nprovider: openai\napproval: never\nsandbox: danger-full-access\nreasoning effort: low\nreasoning summaries: none\nsession id: 019ee91a-4042-78b2-81b4-21a3085e74c1\n--------\nuser\nYou are red-teaming an implementation PRD for AgentLog.\n\nReturn only compact JSON with this exact shape:\n{\"verdict\":\"pass\"|\"fail\",\"findings\":[{\"severity\":\"high\"|\"medium\"|\"low\",\"message\":\"...\",\"evidence\":\"...\"}],\"missingRequirements\":[\"...\"]}\n\nPass only if the PRD is executable by a coding agent and fully covers the user's Phase 0 requirement:\n- current behavior coverage tests before abstraction\n- QA smoke validation tests\n- agent-framework readiness validation\n- PRD gap patching before provider code changes\n- later migration to Hermes only after provider abstraction\n\nFail if any required Phase 0 deliverable, guardrail, or verification criterion is missing or ambiguous.\n\nPRD:\n# Hook Provider Abstraction, Then Hermes\n\n> status: draft\n> created: 2026-06-21\n> updated: 2026-06-21\n> revision: 1\n\n## 0. LLM Work Guide\n\n> **Follow the Spec Execution Protocol (`/sisyphus`).** This PRD is implementation-ready, but code work should start only after review.\n\n| Item | Section |\n|------|---------|\n| Task Checklist | §6 |\n| Naming Conventions | §3.5 |\n| State file | `docs/plans/2026-06-21-hook-provider-abstraction-hermes-prd.state.md` |\n| Decision Log | §8 |\n| Handoff Snapshot | §9 |\n| Changelog | §10 |\n\n## 1. Goal\n\nRefactor AgentLog's Claude/Codex hook integration into a small provider layer, then add Hermes Agent as the third hook provider.\n\nThis follows the \"third time\" rule:\n\n- Claude-only did not need an abstraction.\n- Claude + Codex still tolerated explicit branching.\n- Claude + Codex + Hermes creates the third repeated hook lifecycle path, so provider extraction is now justified.\n\nThe desired end state:\n\n- Existing Claude and Codex installs, doctor checks, uninstall behavior, and Daily Note output remain unchanged.\n- Hook provider lifecycle logic becomes registry-driven instead of hard-coded throughout `src/cli.ts`.\n- `agentlog hook --source hermes` accepts Hermes `pre_llm_call` shell-hook payloads and writes `[[hermes_<session_id>]]` dividers.\n- Hermes setup is documented first; AgentLog-owned mutation of `~/.hermes/config.yaml` is optional and explicitly scoped.\n\n## 2. Non-Goals\n\n- Do not rewrite the Daily Note writer.\n- Do not redesign Obsidian path resolution or Daily Note bootstrap.\n- Do not add Hermes backfill until Hermes transcript format is separately verified.\n- Do not make EnglishAsk run for Hermes.\n- Do not silently include Hermes in `agentlog init --all`; keep `--all` as Claude+Codex for backward compatibility.\n- Do not regex-edit arbitrary YAML for `~/.hermes/config.yaml`.\n- Do not add a broad plugin framework beyond the hook-provider boundary.\n\n## 3. Design\n\n### 3.1 Deliverables\n\n| Deliverable | Path | Consumer | Format |\n|-------------|------|----------|--------|\n| Provider type definitions | `src/hook-providers/types.ts` | CLI, hook parser, tests | TypeScript |\n| Provider registry | `src/hook-providers/index.ts` | CLI orchestration | TypeScript |\n| Claude provider adapter | `src/hook-providers/claude.ts` | provider registry | TypeScript |\n| Codex provider adapter | `src/hook-providers/codex.ts` | provider registry | TypeScript |\n| Hermes provider adapter | `s\n[truncated 15658 chars]",
+    "exitCode": 0,
+    "model": "gpt-5.3-codex-spark",
+    "reasoningEffort": "low",
+    "timeoutMs": 60000
+  }
+}
