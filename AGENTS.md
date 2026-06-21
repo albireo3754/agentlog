@@ -113,6 +113,17 @@ Example:
 agentlog open
 ```
 
+### `agentlog backfill [date] [--source all|claude|codex] [--dry-run] [--format text|json]`
+
+Scans local Claude Code and Codex session JSONL files for missed user prompts and appends entries that are not already present in the target Daily Note. Defaults to today and both sources.
+
+Example:
+```
+agentlog backfill
+agentlog backfill 2026-06-19 --source codex
+agentlog backfill --dry-run --format json
+```
+
 ### `agentlog uninstall [-y] [--codex | --all]`
 
 Removes AgentLog integration(s).

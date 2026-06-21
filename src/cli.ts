@@ -43,6 +43,7 @@ import {
   unregisterCodexNotify,
 } from "./codex-settings.js";
 import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo, readVersion, resolvePackageRoot } from "./version-info.js";
+import { parseDateArg, runBackfill, type BackfillSource } from "./backfill.js";
 import { Command } from "commander";
 
 type InitTarget = "claude" | "codex" | "all";
@@ -519,6 +520,8 @@ async function cmdDoctor(): Promise<void> {
 
     const detail = codexHookState.kind === "unsupported"
       ? `${CODEX_HOOKS_PATH} — unsupported hook config (${codexHookState.reason})`
+      : codexHookState.kind === "needs_migration"
+        ? `${CODEX_HOOKS_PATH} — ${codexHookState.reason}`
       : codexHookState.kind === "registered"
         ? `${CODEX_HOOKS_PATH} — hook registered`
         : hasCodexHookMetadata
@@ -535,6 +538,8 @@ async function cmdDoctor(): Promise<void> {
       detail,
       codexHookState.kind === "unsupported"
         ? "fix hooks.json or move it aside, then run: agentlog init --codex"
+        : codexHookState.kind === "needs_migration"
+          ? "run: agentlog init --codex to migrate the Codex hook"
         : legacyNotifyState.kind === "unsupported"
           ? "simplify legacy notify config or move config.toml aside, then run: agentlog init --codex"
           : hasCodexHookMetadata || hasRestoreMetadata || legacyNotifyState.kind === "registered"
@@ -626,6 +631,50 @@ async function cmdVersion(): Promise<void> {
   console.log(formatVersionOutput(getRuntimeInfo()));
 }
 
+async function cmdBackfill(dateArg: string | undefined, opts: { source: BackfillSource; dryRun: boolean; format: string }): Promise<void> {
+  if (!["all", "claude", "codex"].includes(opts.source)) {
+    console.error("Error: --source must be one of: all, claude, codex");
+    process.exit(1);
+  }
+  if (!["text", "json"].includes(opts.format)) {
+    console.error("Error: --format must be one of: text, json");
+    process.exit(1);
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    console.error("[agentlog] not initialized. Run: agentlog init ~/path/to/vault");
+    process.exit(1);
+  }
+
+  let date: Date;
+  try {
+    date = parseDateArg(dateArg);
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  let result;
+  try {
+    result = runBackfill(config, { date, source: opts.source, dryRun: opts.dryRun });
+  } catch (err) {
+    console.error(err instanceof Error ? `Error: ${err.message}` : String(err));
+    process.exit(1);
+  }
+
+  if (opts.format === "json") {
+    console.log(JSON.stringify({ status: "success", data: result }));
+    return;
+  }
+
+  const verb = opts.dryRun ? "Would append" : "Appended";
+  console.log(`${verb} ${result.inserted} entries from ${result.found} discovered prompts (${result.skipped} already present).`);
+  console.log(`  date: ${result.date}`);
+  console.log(`  scanned sessions: ${result.scanned}`);
+  if (result.filePath) console.log(`  note: ${result.filePath}`);
+}
+
 async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dryRun: boolean }): Promise<void> {
   if (opts.codex && opts.all) {
     console.error("Error: choose at most one uninstall target: --codex or --all");
@@ -671,7 +720,7 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dr
   } else {
     // Check if Codex hook is still registered
     const codexHookState = readCodexHookState();
-    if (codexHookState.kind === "registered") {
+    if (codexHookState.kind === "registered" || codexHookState.kind === "needs_migration") {
       console.warn(
         "⚠️  Codex hook is still registered. Run `agentlog uninstall --all` to also remove it."
       );
@@ -789,6 +838,16 @@ const SCHEMA_DATA = {
       description: "Run codex exec with a test prompt",
       arguments: [{ name: "prompt", description: "Prompt text to send to codex exec", required: true }],
       options: [],
+    },
+    {
+      name: "backfill",
+      description: "Scan Claude/Codex session JSONL files and append missing prompts to a Daily Note",
+      arguments: [{ name: "date", description: "Date to backfill (YYYY-MM-DD, default: today)", required: false }],
+      options: [
+        { flags: "--source <source>", description: "Source to scan: all, claude, or codex" },
+        { flags: "--dry-run", description: "Report entries without writing to the note" },
+        { flags: "--format <format>", description: "Output format: text or json" },
+      ],
     },
     {
       name: "hook",
@@ -920,6 +979,16 @@ program
   .argument("[prompt...]", "Prompt text to send to codex exec")
   .action(async (prompt: string[]) => {
     await cmdCodexDebug(prompt);
+  });
+
+program
+  .command("backfill [date]")
+  .description("Scan Claude/Codex session JSONL files and append missing prompts to a Daily Note")
+  .option("--source <source>", "Source to scan: all, claude, or codex", "all")
+  .option("--dry-run", "Report entries without writing to the note", false)
+  .option("--format <format>", "Output format: text or json", "text")
+  .action(async (date: string | undefined, opts: { source: BackfillSource; dryRun: boolean; format: string }) => {
+    await cmdBackfill(date, opts);
   });
 
 program

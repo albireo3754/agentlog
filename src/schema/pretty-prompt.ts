@@ -19,6 +19,7 @@ const SKIP_PATTERNS: RegExp[] = [
   /^This session is being continued from a previous conversation/,
   /^# \w.+ — /,
   /^Stop hook feedback:/,
+  /^<turn_aborted>/,
   /^\[AUTOPILOT/,
   /^\[RALPH LOOP/,
   /^\[MAGIC KEYWORD/,
