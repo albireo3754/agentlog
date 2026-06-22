@@ -68,6 +68,26 @@ describe("Hermes config automation", () => {
     expect(read(configPath)).toContain("command: echo keep");
   });
 
+  it("replaces older bare AgentLog hook command with the requested executable path", () => {
+    const configPath = join(tmpHome, ".hermes", "config.yaml");
+    mkdirSync(join(tmpHome, ".hermes"), { recursive: true });
+    writeFileSync(
+      configPath,
+      'hooks:\n  pre_llm_call:\n    - command: "agentlog hook --source hermes"\n    - command: echo keep\n',
+      "utf-8"
+    );
+
+    const command = "/Users/pray/.bun/bin/agentlog hook --source hermes";
+    const result = registerHermesHook({ homeDir: tmpHome, command });
+
+    expect(result.changed).toBe(true);
+    const content = read(configPath);
+    expect(content).toContain(command);
+    expect(content).not.toContain('command: agentlog hook --source hermes\n');
+    expect(content).toContain("echo keep");
+    expect(content.match(/hook --source hermes/g)).toHaveLength(1);
+  });
+
   it("supports default plus multiple named Hermes profiles", () => {
     mkdirSync(join(tmpHome, ".hermes", "profiles", "alpha"), { recursive: true });
     mkdirSync(join(tmpHome, ".hermes", "profiles", "beta"), { recursive: true });

@@ -32,6 +32,7 @@
     "prd:redteam": "node scripts/prd-redteam.mjs",
     "self-review": "node scripts/self-review.mjs",
     "test": "bun test",
+    "test:hermes-host": "bun run scripts/end-user-hermes-host-smoke.ts",
     "test:install-smoke": "bun run scripts/e2e-bun-link-smoke.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/postinstall.mjs"

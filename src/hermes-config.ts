@@ -19,6 +19,7 @@ export interface HermesConfigTargetOptions {
   hermesHome?: string;
   profiles?: string[];
   allProfiles?: boolean;
+  command?: string;
 }
 
 export interface HermesConfigMutationResult {
@@ -56,6 +57,10 @@ function normalizeProfiles(profiles: string[] | undefined): string[] {
     result.push(trimmed);
   }
   return result;
+}
+
+function hookCommand(options: HermesConfigTargetOptions): string {
+  return options.command?.trim() || AGENTLOG_HERMES_HOOK_COMMAND;
 }
 
 export function resolveHermesConfigTargets(options: HermesConfigTargetOptions = {}): HermesConfigTarget[] {
@@ -129,23 +134,45 @@ function ensurePreLlmHookList(config: Record<string, unknown>): Array<Record<str
   return hooks["pre_llm_call"] as Array<Record<string, unknown> | string>;
 }
 
-function hasAgentlogHook(list: Array<Record<string, unknown> | string>): boolean {
-  return list.some((entry) => {
-    if (typeof entry === "string") return entry === AGENTLOG_HERMES_HOOK_COMMAND;
-    return entry && entry["command"] === AGENTLOG_HERMES_HOOK_COMMAND;
-  });
+function entryCommand(entry: Record<string, unknown> | string): string | null {
+  if (typeof entry === "string") return entry;
+  const command = entry?.["command"];
+  return typeof command === "string" ? command : null;
+}
+
+function isAgentlogHookCommand(command: string, desiredCommand: string): boolean {
+  const trimmed = command.trim();
+  return (
+    trimmed === desiredCommand ||
+    trimmed === AGENTLOG_HERMES_HOOK_COMMAND ||
+    trimmed.endsWith(`/agentlog hook --source hermes`)
+  );
+}
+
+function hasDesiredAgentlogHook(list: Array<Record<string, unknown> | string>, desiredCommand: string): boolean {
+  return list.some((entry) => entryCommand(entry) === desiredCommand);
 }
 
 export function registerHermesHook(options: HermesConfigTargetOptions = {}): HermesConfigMutationResult {
   const targets = resolveHermesConfigTargets(options);
+  const command = hookCommand(options);
   const results: HermesTargetResult[] = [];
 
   for (const target of targets) {
     const config = loadConfigObject(target.path);
     const preLlmCall = ensurePreLlmHookList(config);
-    const changed = !hasAgentlogHook(preLlmCall);
+    const withoutStaleAgentlog = preLlmCall.filter((entry) => {
+      const existingCommand = entryCommand(entry);
+      return existingCommand === null || !isAgentlogHookCommand(existingCommand, command) || existingCommand === command;
+    });
+    const removedStale = withoutStaleAgentlog.length !== preLlmCall.length;
+    if (removedStale) {
+      preLlmCall.splice(0, preLlmCall.length, ...withoutStaleAgentlog);
+    }
+    const needsAdd = !hasDesiredAgentlogHook(preLlmCall, command);
+    const changed = removedStale || needsAdd;
     if (changed) {
-      preLlmCall.push({ command: AGENTLOG_HERMES_HOOK_COMMAND });
+      if (needsAdd) preLlmCall.push({ command });
       writeConfigObject(target.path, config);
     }
     results.push({ ...target, changed });
@@ -159,6 +186,7 @@ export function registerHermesHook(options: HermesConfigTargetOptions = {}): Her
 
 export function unregisterHermesHook(options: HermesConfigTargetOptions = {}): HermesConfigMutationResult {
   const targets = resolveHermesConfigTargets(options);
+  const command = hookCommand(options);
   const results: HermesTargetResult[] = [];
 
   for (const target of targets) {
@@ -169,8 +197,8 @@ export function unregisterHermesHook(options: HermesConfigTargetOptions = {}): H
     const config = loadConfigObject(target.path);
     const preLlmCall = ensurePreLlmHookList(config);
     const next = preLlmCall.filter((entry) => {
-      if (typeof entry === "string") return entry !== AGENTLOG_HERMES_HOOK_COMMAND;
-      return entry["command"] !== AGENTLOG_HERMES_HOOK_COMMAND;
+      const existingCommand = entryCommand(entry);
+      return existingCommand === null || !isAgentlogHookCommand(existingCommand, command);
     });
     const changed = next.length !== preLlmCall.length;
     if (changed) {
@@ -189,6 +217,7 @@ export function unregisterHermesHook(options: HermesConfigTargetOptions = {}): H
 
 export function readHermesHookState(options: HermesConfigTargetOptions = {}): HermesHookState {
   const targets = resolveHermesConfigTargets(options);
+  const command = hookCommand(options);
   const registered: HermesConfigTarget[] = [];
   const missing: HermesConfigTarget[] = [];
 
@@ -200,7 +229,10 @@ export function readHermesHookState(options: HermesConfigTargetOptions = {}): He
     try {
       const config = loadConfigObject(target.path);
       const preLlmCall = ensurePreLlmHookList(config);
-      if (hasAgentlogHook(preLlmCall)) registered.push(target);
+      if (preLlmCall.some((entry) => {
+        const existingCommand = entryCommand(entry);
+        return existingCommand !== null && isAgentlogHookCommand(existingCommand, command);
+      })) registered.push(target);
       else missing.push(target);
     } catch (err) {
       return {

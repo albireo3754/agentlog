@@ -14,6 +14,7 @@ function hermesOptions(ctx: Partial<HookInstallContext> | undefined): HermesConf
     hermesHome: ctx?.hermesHome,
     profiles: ctx?.hermesProfiles,
     allProfiles: ctx?.hermesAllProfiles,
+    command: ctx?.hermesCommand,
   };
 }
 
@@ -32,12 +33,13 @@ export const hermesProvider: HookProvider = {
   command: AGENTLOG_HERMES_HOOK_COMMAND,
 
   install(ctx) {
-    const result = registerHermesHook(hermesOptions(ctx));
+    const options = hermesOptions(ctx);
+    const result = registerHermesHook(options);
     return {
       changed: result.changed,
       messages: [
         `Hermes hook registered: ${formatTargets(result.targets)}`,
-        `  ${AGENTLOG_HERMES_HOOK_COMMAND}`,
+        `  ${options.command ?? AGENTLOG_HERMES_HOOK_COMMAND}`,
       ],
       configPatch: {
         hermesHookInstalled: true,

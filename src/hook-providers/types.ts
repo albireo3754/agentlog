@@ -17,6 +17,7 @@ export interface HookInstallContext {
   hermesHome?: string;
   hermesProfiles?: string[];
   hermesAllProfiles?: boolean;
+  hermesCommand?: string;
 }
 
 export interface HookInstallResult {

@@ -66,7 +66,18 @@ function providerContext(config: AgentLogConfig | null, opts: HermesCliOptions =
     hermesHome: process.env.HERMES_HOME,
     hermesProfiles: opts.hermesProfile && opts.hermesProfile.length > 0 ? opts.hermesProfile : config?.hermesProfiles,
     hermesAllProfiles: opts.hermesAllProfiles,
+    hermesCommand: agentlogHermesHookCommand(),
   };
+}
+
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_/:=.,@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function agentlogHermesHookCommand(): string {
+  const agentlogBin = detectBinary("agentlog");
+  return `${shellQuote(agentlogBin || "agentlog")} hook --source hermes`;
 }
 
 function savePatchedConfig(config: AgentLogConfig | null, patch: Partial<AgentLogConfig> | undefined): void {
