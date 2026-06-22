@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "fs";
 import { spawn } from "bun";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 
 interface Result {
@@ -19,10 +19,10 @@ interface Args {
   appendFixture: boolean;
 }
 
-async function run(cmd: string[], cwd = process.cwd()): Promise<Result> {
+async function run(cmd: string[], cwd = process.cwd(), env: Record<string, string> = {}): Promise<Result> {
   const proc = spawn(cmd, {
     cwd,
-    env: process.env,
+    env: { ...process.env, ...env },
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -212,10 +212,24 @@ async function main(): Promise<void> {
   const doctorArgs = args.profiles.length === 1
     ? ["hermes", "-p", args.profiles[0], "hooks", "doctor"]
     : ["hermes", "hooks", "doctor"];
-  const hermesDoctor = await run(doctorArgs);
-  assertOk(hermesDoctor, doctorArgs.join(" "));
-  if (!hermesDoctor.stdout.includes("All shell hooks look healthy.")) {
-    throw new Error(`Hermes hooks doctor did not report healthy hooks\nstdout:\n${hermesDoctor.stdout}\nstderr:\n${hermesDoctor.stderr}`);
+  const doctorRoot = mkdtempSync(join(tmpdir(), "agentlog-hermes-host-doctor-"));
+  try {
+    const doctorConfigDir = join(doctorRoot, "cfg");
+    const doctorNotesDir = join(doctorRoot, "notes");
+    mkdirSync(doctorConfigDir, { recursive: true });
+    mkdirSync(doctorNotesDir, { recursive: true });
+    writeFileSync(
+      join(doctorConfigDir, "config.json"),
+      JSON.stringify({ vault: doctorNotesDir, plain: true, hermesHookInstalled: true }, null, 2),
+      "utf-8"
+    );
+    const hermesDoctor = await run(doctorArgs, process.cwd(), { AGENTLOG_CONFIG_DIR: doctorConfigDir });
+    assertOk(hermesDoctor, doctorArgs.join(" "));
+    if (!hermesDoctor.stdout.includes("All shell hooks look healthy.")) {
+      throw new Error(`Hermes hooks doctor did not report healthy hooks\nstdout:\n${hermesDoctor.stdout}\nstderr:\n${hermesDoctor.stderr}`);
+    }
+  } finally {
+    rmSync(doctorRoot, { recursive: true, force: true });
   }
   console.log("hermes hooks doctor: healthy");
 
