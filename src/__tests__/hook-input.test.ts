@@ -118,6 +118,7 @@ describe("parseHookInput", () => {
       sessionId: "019cb123-ac48-7d22-b5bf-195ee34699af",
       cwd: "/Users/pray/opensource/agentlog",
       prompt: "Reply with exactly: OK",
+      transcriptPath: "/Users/pray/.codex/sessions/example.jsonl",
     });
   });
 

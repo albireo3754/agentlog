@@ -434,6 +434,7 @@ describe("cli codex commands", () => {
     expect(content).toContain("## EnglishAsk");
     expect(content).toContain("- score: 3/5");
     expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("User prompt:\nReply with exactly: OK");
+    expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("assistant: OK");
   });
 
   it("codex-notify evaluates the raw prompt to EnglishAsk while logging a pretty prompt", async () => {
@@ -627,6 +628,97 @@ describe("cli codex commands", () => {
     expect(stdout).toBe("");
     expect(stderr).toBe("");
     expect(readFileSync(findPlainNotePath(vault), "utf-8")).toContain("Reply with exactly: OK");
+  });
+
+  it("agentlog hook --source codex appends EnglishAsk feedback when enabled", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const evaluator = makeFakeEnglishAskEvaluator(tmpHome);
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        codexHookInstalled: true,
+        englishAsk: {
+          enabled: true,
+          mode: "log-only",
+          evaluatorCommand: evaluator.command,
+        },
+      }),
+      "utf-8"
+    );
+
+    const raw = fixture("codex-hook-user-prompt-submit.json");
+    const proc = Bun.spawn([BUN_BIN, "run", CLI_PATH, "hook", "--source", "codex"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, HOME: tmpHome, AGENTLOG_CONFIG_DIR: cfgDir },
+    });
+    proc.stdin.write(raw);
+    proc.stdin.end();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toBe("");
+    expect(content).toContain("Reply with exactly: OK");
+    expect(content).toContain("## EnglishAsk");
+    expect(content).toContain("- session: [[codex_019cb123-ac48-7d22-b5bf-195ee34699af]]");
+    expect(content).toContain("- score: 3/5");
+    expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("User prompt:\nReply with exactly: OK");
+  });
+
+  it("agentlog hook skips guarded EnglishAsk evaluator child turns", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        codexHookInstalled: true,
+        englishAsk: {
+          enabled: true,
+        },
+      }),
+      "utf-8"
+    );
+
+    const raw = fixture("codex-hook-user-prompt-submit.json");
+    const proc = Bun.spawn([BUN_BIN, "run", CLI_PATH, "hook", "--source", "codex"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: {
+        ...process.env,
+        HOME: tmpHome,
+        AGENTLOG_CONFIG_DIR: cfgDir,
+        AGENTLOG_ENGLISHASK_EVAL: "1",
+      },
+    });
+    proc.stdin.write(raw);
+    proc.stdin.end();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toBe("");
+    expect(readdirSync(vault).some((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name))).toBe(false);
   });
 
   it("legacy codex-uninstall command is rejected", async () => {

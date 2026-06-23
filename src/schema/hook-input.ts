@@ -48,6 +48,7 @@ export interface ParsedHookInput {
   sessionId: string;
   cwd: string;
   prompt: string;
+  transcriptPath?: string;
 }
 
 export interface ParseHookInputOptions {
@@ -121,5 +122,8 @@ export function parseHookInput(raw: string, options: ParseHookInputOptions = {})
     sessionId: obj["session_id"] as string,
     cwd: obj["cwd"] as string,
     prompt,
+    transcriptPath: typeof obj["transcript_path"] === "string" && obj["transcript_path"]
+      ? obj["transcript_path"]
+      : undefined,
   };
 }

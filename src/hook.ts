@@ -12,6 +12,13 @@ import { parseHookInput } from "./schema/hook-input.js";
 import { cwdToProject } from "./schema/daily-note.js";
 import { prettyPrompt } from "./schema/pretty-prompt.js";
 import { appendEntry } from "./note-writer.js";
+import {
+  ENGLISHASK_GUARD_ENV,
+  appendEnglishAskFeedback,
+  buildEnglishAskContext,
+  englishAskSuggestion,
+  evaluateEnglishAsk,
+} from "./english-ask.js";
 import type { SourceType } from "./types.js";
 
 function resolveSource(): SourceType {
@@ -31,6 +38,8 @@ function readStdin(): Promise<string> {
 }
 
 async function main(): Promise<void> {
+  if (process.env[ENGLISHASK_GUARD_ENV] === "1") return;
+
   const source = resolveSource();
 
   // 1. Load config — if absent, hint and exit (not initialized)
@@ -76,7 +85,21 @@ async function main(): Promise<void> {
   };
 
   try {
-    appendEntry(config, entry, now);
+    const result = appendEntry(config, entry, now);
+    const context = buildEnglishAskContext(result.filePath, {
+      ...entry,
+      transcriptPath: parsed.transcriptPath,
+    });
+    const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd, context);
+    if (feedback) {
+      try {
+        appendEnglishAskFeedback(result.filePath, feedback, entry, config);
+        const suggestion = englishAskSuggestion(config, feedback);
+        if (suggestion) process.stderr.write(suggestion);
+      } catch {
+        // EnglishAsk is best-effort; the normal AgentLog entry is already written.
+      }
+    }
   } catch (err) {
     process.stderr.write(`[agentlog] write error: ${err}\n`);
   }

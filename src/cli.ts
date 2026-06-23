@@ -1020,10 +1020,9 @@ program.on("command:*", (operands: string[]) => {
   process.exit(1);
 });
 
-await program.parseAsync(process.argv);
-
-// If no subcommand was invoked, print help and exit 0
 if (!process.argv.slice(2).length) {
   program.outputHelp();
   process.exit(0);
 }
+
+await program.parseAsync(process.argv);

@@ -7,6 +7,7 @@ import { prettyPrompt } from "./schema/pretty-prompt.js";
 import {
   ENGLISHASK_GUARD_ENV,
   appendEnglishAskFeedback,
+  buildEnglishAskContext,
   englishAskSuggestion,
   evaluateEnglishAsk,
 } from "./english-ask.js";
@@ -71,7 +72,12 @@ export async function runCodexNotify(rawArg?: string): Promise<void> {
       now
     );
 
-    const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd);
+    const noteContext = buildEnglishAskContext(result.filePath, entry);
+    const assistantContext = parsed.lastAssistantMessage
+      ? `assistant: ${parsed.lastAssistantMessage}`
+      : null;
+    const context = [noteContext, assistantContext].filter(Boolean).join("\n") || null;
+    const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd, context);
     if (feedback) {
       try {
         appendEnglishAskFeedback(result.filePath, feedback, entry, config);

@@ -17,6 +17,7 @@ export interface EnglishAskConfig {
   threshold?: number;
   timeoutMs?: number;
   maxPromptChars?: number;
+  maxContextChars?: number;
   maxOutputChars?: number;
   evaluatorCommand?: string[];
 }

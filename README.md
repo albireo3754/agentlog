@@ -200,7 +200,7 @@ Current CLI:
 | `claudeHookInstalled` | `false` | Records that AgentLog expects the Claude hook to be installed, so `doctor` does not downgrade a missing Claude hook in `--all` installs |
 | `codexHookInstalled` | `false` | Records that AgentLog expects the Codex hook to be installed, so `doctor` can detect partial damage |
 | `codexNotifyRestore` | unset | Legacy metadata for older Codex `notify` installs |
-| `englishAsk` | unset | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is `true` |
+| `englishAsk` | unset | Optional hook prompt evaluator config. Disabled unless `englishAsk.enabled` is `true` |
 
 Example EnglishAsk config:
 
@@ -210,12 +210,13 @@ Example EnglishAsk config:
     "enabled": true,
     "mode": "log-only",
     "threshold": 3,
-    "timeoutMs": 8000
+    "timeoutMs": 8000,
+    "maxContextChars": 4000
   }
 }
 ```
 
-When enabled, AgentLog evaluates English Codex user prompts with `codex exec` after writing the normal AgentLog entry. Results are appended to the same Daily Note under `## EnglishAsk`. Evaluator failures and timeouts are ignored. Child evaluator runs set `AGENTLOG_ENGLISHASK_EVAL=1` so AgentLog skips evaluator child notify turns.
+When enabled, AgentLog evaluates English hook prompts with `codex exec` after writing the normal AgentLog entry. The evaluator receives the current raw prompt plus bounded prior user/model context from the hook transcript when available. If no transcript is available, AgentLog falls back to same-session prompt context from the Daily Note. Results are appended to the same Daily Note under `## EnglishAsk`. Evaluator failures and timeouts are ignored. Child evaluator runs set `AGENTLOG_ENGLISHASK_EVAL=1` so AgentLog skips evaluator child turns.
 
 Environment variables:
 
