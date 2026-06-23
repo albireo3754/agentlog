@@ -1,8 +1,7 @@
 /**
  * Hook Input Schema — Source of Truth
  *
- * Claude Code and Codex send this JSON payload via stdin when a
- * UserPromptSubmit hook fires.
+ * Claude Code, Codex, and Hermes send JSON payloads via stdin when hooks fire.
  * All fields are validated at runtime by parseHookInput().
  */
 
@@ -18,13 +17,14 @@ export interface HookInputMessage {
 }
 
 /**
- * Full UserPromptSubmit hook payload.
+ * Full hook payload.
  *
  * Required fields: hook_event_name, session_id, cwd
  * Codex requires `prompt`. Claude compatibility keeps older fallback shapes.
+ * Hermes requires `pre_llm_call` and `extra.user_message`.
  */
 export interface HookInput {
-  hook_event_name: "UserPromptSubmit";
+  hook_event_name: "UserPromptSubmit" | "pre_llm_call";
   session_id: string;
   cwd: string;
   /** Path to the session transcript JSONL file */
@@ -41,6 +41,14 @@ export interface HookInput {
   message?: HookInputMessage;
   /** Claude/backward-compatibility fallback if prompt and message are absent */
   parts?: HookInputPart[];
+  /** Hermes event-specific kwargs for pre_llm_call. */
+  extra?: {
+    user_message?: string;
+    conversation_history?: unknown[];
+    is_first_turn?: boolean;
+    model?: string;
+    platform?: string;
+  };
 }
 
 /** Parsed, normalized result after validating hook input */
@@ -52,7 +60,7 @@ export interface ParsedHookInput {
 }
 
 export interface ParseHookInputOptions {
-  source?: "claude" | "codex";
+  source?: "claude" | "codex" | "hermes";
 }
 
 /**
@@ -82,7 +90,11 @@ export function parseHookInput(raw: string, options: ParseHookInputOptions = {})
 
   const obj = input as Record<string, unknown>;
 
-  if (obj["hook_event_name"] !== "UserPromptSubmit") {
+  if (options.source === "hermes") {
+    if (obj["hook_event_name"] !== "pre_llm_call") {
+      throw new Error("Missing or unsupported hook_event_name for Hermes: pre_llm_call");
+    }
+  } else if (obj["hook_event_name"] !== "UserPromptSubmit") {
     throw new Error("Missing or unsupported hook_event_name: UserPromptSubmit");
   }
   if (typeof obj["session_id"] !== "string" || !obj["session_id"]) {
@@ -95,7 +107,19 @@ export function parseHookInput(raw: string, options: ParseHookInputOptions = {})
   // Prompt extraction with fallback chain
   let prompt: string | undefined;
 
-  if (typeof obj["prompt"] === "string" && obj["prompt"]) {
+  if (options.source === "hermes") {
+    const extra = obj["extra"];
+    if (
+      typeof extra === "object" &&
+      extra !== null &&
+      typeof (extra as Record<string, unknown>)["user_message"] === "string" &&
+      (extra as Record<string, unknown>)["user_message"]
+    ) {
+      prompt = (extra as Record<string, unknown>)["user_message"] as string;
+    } else {
+      throw new Error("Missing required field for Hermes pre_llm_call: extra.user_message");
+    }
+  } else if (typeof obj["prompt"] === "string" && obj["prompt"]) {
     prompt = obj["prompt"];
   } else if (options.source === "codex") {
     throw new Error("Missing required field for Codex UserPromptSubmit: prompt");

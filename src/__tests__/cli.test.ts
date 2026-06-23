@@ -395,6 +395,25 @@ describe("cli doctor command", () => {
   });
 });
 
+describe("cli backfill command", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it("rejects Hermes as a backfill source until Hermes transcript backfill exists", async () => {
+    const { stderr, exitCode } = await runCli(["backfill", "--source", "hermes", "--dry-run"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Error: --source must be one of: all, claude, codex");
+  });
+});
+
 describe("cli codex-debug command", () => {
   let tmpHome: string;
 
