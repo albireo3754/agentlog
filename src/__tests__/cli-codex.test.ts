@@ -1272,6 +1272,7 @@ describe("cli codex commands", () => {
     const { stdout, exitCode } = await runCli(["doctor"], {
       HOME: tmpHome,
       AGENTLOG_CONFIG_DIR: cfgDir,
+      HERMES_HOME: join(tmpHome, ".hermes"),
     });
 
     expect(exitCode).not.toBe(0);
@@ -1282,6 +1283,7 @@ describe("cli codex commands", () => {
   it("doctor passes Hermes when config.yaml contains the manual hook command", async () => {
     const vault = join(tmpHome, "notes");
     const cfgDir = join(tmpHome, ".agentlog");
+    const pathWithAgentlog = makeFakeCodexPath(tmpHome);
     mkdirSync(vault, { recursive: true });
     mkdirSync(cfgDir, { recursive: true });
     mkdirSync(join(tmpHome, ".hermes"), { recursive: true });
@@ -1299,6 +1301,8 @@ describe("cli codex commands", () => {
     const { stdout, exitCode } = await runCli(["doctor"], {
       HOME: tmpHome,
       AGENTLOG_CONFIG_DIR: cfgDir,
+      HERMES_HOME: join(tmpHome, ".hermes"),
+      PATH: pathWithAgentlog,
     });
 
     expect(exitCode).toBe(0);
