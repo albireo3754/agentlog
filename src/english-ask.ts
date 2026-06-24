@@ -120,10 +120,12 @@ function buildTranscriptContext(transcriptPath: string | undefined, maxTurns = D
   for (const line of readJsonLines(transcriptPath)) {
     for (const turn of [...codexTranscriptTurns(line), ...claudeTranscriptTurns(line)]) {
       pushTurn(turns, turn.role, turn.text);
+      if (turns.length > maxTurns) {
+        turns.splice(0, turns.length - maxTurns);
+      }
     }
   }
   const context = turns
-    .slice(-maxTurns)
     .map((turn) => `${turn.role}: ${turn.text}`)
     .join("\n")
     .trim();

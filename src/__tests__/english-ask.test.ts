@@ -272,6 +272,33 @@ printf 'Score: 5/5\\nNatural version: ok\\nMissing context: none\\nRewrite with:
     expect(context).not.toContain("Daily note prompt only");
   });
 
+  it("keeps transcript context bounded to recent turns", () => {
+    const notePath = join(tmp, "2026-03-02.md");
+    const transcriptPath = join(tmp, "large-transcript.jsonl");
+    writeFileSync(notePath, "## AgentLog\n- 10:00 fallback\n", "utf-8");
+    writeFileSync(
+      transcriptPath,
+      Array.from({ length: 20 }, (_, index) =>
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "user_message", message: `turn-${index}` },
+        })
+      ).join("\n"),
+      "utf-8"
+    );
+
+    const context = buildEnglishAskContext(notePath, {
+      source: "codex",
+      sessionId: "session-a",
+      transcriptPath,
+    });
+
+    expect(context).not.toContain("turn-0");
+    expect(context).not.toContain("turn-7");
+    expect(context).toContain("turn-8");
+    expect(context).toContain("turn-19");
+  });
+
   it("appends feedback to an EnglishAsk Daily Note section", () => {
     const filePath = join(tmp, "2026-03-02.md");
     writeFileSync(filePath, "## AgentLog\n- existing\n", "utf-8");

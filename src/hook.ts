@@ -18,6 +18,7 @@ import {
   buildEnglishAskContext,
   englishAskSuggestion,
   evaluateEnglishAsk,
+  shouldEvaluateEnglishAsk,
 } from "./english-ask.js";
 import { isSourceType, type SourceType } from "./types.js";
 
@@ -94,20 +95,20 @@ async function main(): Promise<void> {
 
   try {
     const result = appendEntry(config, entry, now);
-    if (source !== "hermes") {
-      const context = buildEnglishAskContext(result.filePath, {
-        ...entry,
-        transcriptPath: parsed.transcriptPath,
-      });
-      const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd, context);
-      if (feedback) {
-        try {
+    if (source !== "hermes" && shouldEvaluateEnglishAsk(config, parsed.prompt)) {
+      try {
+        const context = buildEnglishAskContext(result.filePath, {
+          ...entry,
+          transcriptPath: parsed.transcriptPath,
+        });
+        const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd, context);
+        if (feedback) {
           appendEnglishAskFeedback(result.filePath, feedback, entry, config);
           const suggestion = englishAskSuggestion(config, feedback);
           if (suggestion) process.stderr.write(suggestion);
-        } catch {
-          // EnglishAsk is best-effort; the normal AgentLog entry is already written.
         }
+      } catch {
+        // EnglishAsk is best-effort; the normal AgentLog entry is already written.
       }
     }
   } catch (err) {

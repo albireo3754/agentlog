@@ -10,6 +10,7 @@ import {
   buildEnglishAskContext,
   englishAskSuggestion,
   evaluateEnglishAsk,
+  shouldEvaluateEnglishAsk,
 } from "./english-ask.js";
 
 function readStdin(): Promise<string> {
@@ -72,17 +73,19 @@ export async function runCodexNotify(rawArg?: string): Promise<void> {
       now
     );
 
-    const noteContext = buildEnglishAskContext(result.filePath, entry);
-    const assistantContext = parsed.lastAssistantMessage
-      ? `assistant: ${parsed.lastAssistantMessage}`
-      : null;
-    const context = [noteContext, assistantContext].filter(Boolean).join("\n") || null;
-    const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd, context);
-    if (feedback) {
+    if (shouldEvaluateEnglishAsk(config, parsed.prompt)) {
       try {
-        appendEnglishAskFeedback(result.filePath, feedback, entry, config);
-        const suggestion = englishAskSuggestion(config, feedback);
-        if (suggestion) process.stderr.write(suggestion);
+        const noteContext = buildEnglishAskContext(result.filePath, entry);
+        const assistantContext = parsed.lastAssistantMessage
+          ? `assistant: ${parsed.lastAssistantMessage}`
+          : null;
+        const context = [noteContext, assistantContext].filter(Boolean).join("\n") || null;
+        const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd, context);
+        if (feedback) {
+          appendEnglishAskFeedback(result.filePath, feedback, entry, config);
+          const suggestion = englishAskSuggestion(config, feedback);
+          if (suggestion) process.stderr.write(suggestion);
+        }
       } catch {
         // EnglishAsk is best-effort; the normal AgentLog entry is already written.
       }
