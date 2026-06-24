@@ -228,13 +228,15 @@ Example EnglishAsk config:
     "enabled": true,
     "mode": "log-only",
     "threshold": 3,
-    "timeoutMs": 8000,
+    "timeoutMs": 20000,
     "maxContextChars": 4000
   }
 }
 ```
 
 When enabled, AgentLog evaluates English hook prompts with `codex exec` after writing the normal AgentLog entry. The evaluator receives the current raw prompt plus bounded prior user/model context from the hook transcript when available. If no transcript is available, AgentLog falls back to same-session prompt context from the Daily Note. Results are appended to the same Daily Note under `## EnglishAsk`. Evaluator failures and timeouts are ignored. Child evaluator runs set `AGENTLOG_ENGLISHASK_EVAL=1` so AgentLog skips evaluator child turns.
+
+The default evaluator command is `codex exec --ignore-user-config --ephemeral -` so hook-time evaluation avoids loading the user's normal Codex hooks and MCP config. Override it with `englishAsk.evaluatorCommand` when a different evaluator is required.
 
 Environment variables:
 

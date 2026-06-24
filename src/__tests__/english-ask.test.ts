@@ -82,6 +82,40 @@ describe("EnglishAsk", () => {
     expect(readFileSync(inputPath, "utf-8")).toContain("User prompt:\nWhat should I do next?");
   });
 
+  it("uses a low-overhead Codex exec command by default", () => {
+    const binDir = join(tmp, "bin");
+    const argsPath = join(tmp, "codex-args.txt");
+    const envPath = join(tmp, "codex-env.txt");
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(
+      join(binDir, "codex"),
+      `#!/bin/sh
+printf '%s\\n' "$@" > "${argsPath}"
+printf '%s\\n' "$${ENGLISHASK_GUARD_ENV}" > "${envPath}"
+cat >/dev/null
+printf 'Score: 5/5\\nNatural version: ok\\nMissing context: none\\nRewrite with: none\\n'
+`,
+      "utf-8"
+    );
+    chmodSync(join(binDir, "codex"), 0o755);
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${oldPath ?? ""}`;
+
+    try {
+      const result = evaluateEnglishAsk(
+        { vault: tmp, englishAsk: { enabled: true } },
+        "What should I do next?",
+        tmp
+      );
+
+      expect(result?.score).toBe(5);
+      expect(readFileSync(argsPath, "utf-8")).toBe("exec\n--ignore-user-config\n--ephemeral\n-\n");
+      expect(readFileSync(envPath, "utf-8")).toBe("1\n");
+    } finally {
+      process.env.PATH = oldPath;
+    }
+  });
+
   it("includes bounded prior context in evaluator input", () => {
     const { command, inputPath } = fakeEvaluator(
       "Score: 4/5\nNatural version: yes\nMissing context: none\nRewrite with: none"

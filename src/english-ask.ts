@@ -4,7 +4,8 @@ import type { AgentLogConfig, EnglishAskFeedback, SourceType } from "./types.js"
 
 export const ENGLISHASK_GUARD_ENV = "AGENTLOG_ENGLISHASK_EVAL";
 
-const DEFAULT_TIMEOUT_MS = 8_000;
+const DEFAULT_EVALUATOR_COMMAND = ["codex", "exec", "--ignore-user-config", "--ephemeral", "-"];
+const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_THRESHOLD = 3;
 const DEFAULT_MAX_PROMPT_CHARS = 2_000;
 const DEFAULT_MAX_CONTEXT_CHARS = 4_000;
@@ -184,7 +185,7 @@ export function evaluateEnglishAsk(
   const maxPromptChars = englishAsk.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
   const maxContextChars = englishAsk.maxContextChars ?? DEFAULT_MAX_CONTEXT_CHARS;
   const maxOutputChars = englishAsk.maxOutputChars ?? DEFAULT_MAX_OUTPUT_CHARS;
-  const command = englishAsk.evaluatorCommand ?? ["codex", "exec", "-"];
+  const command = englishAsk.evaluatorCommand ?? DEFAULT_EVALUATOR_COMMAND;
   const [bin, ...args] = command;
   if (!bin) return null;
 
