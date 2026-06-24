@@ -1,5 +1,6 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from "fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
+import { StringDecoder } from "string_decoder";
 import type { AgentLogConfig, EnglishAskFeedback, SourceType } from "./types.js";
 
 export const ENGLISHASK_GUARD_ENV = "AGENTLOG_ENGLISHASK_EVAL";
@@ -41,19 +42,45 @@ function redact(value: string): string {
     .replace(/(Bearer\s+)[A-Za-z0-9._-]{12,}/gi, "$1[redacted-token]");
 }
 
-function readJsonLines(filePath: string): RawJson[] {
-  if (!existsSync(filePath)) return [];
-  return readFileSync(filePath, "utf-8")
-    .split("\n")
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        const parsed = JSON.parse(line);
-        return typeof parsed === "object" && parsed !== null ? [parsed as RawJson] : [];
-      } catch {
-        return [];
+function parseJsonLine(line: string): RawJson | null {
+  if (!line) return null;
+  try {
+    const parsed = JSON.parse(line);
+    return typeof parsed === "object" && parsed !== null ? parsed as RawJson : null;
+  } catch {
+    return null;
+  }
+}
+
+function* readJsonLines(filePath: string): Generator<RawJson> {
+  if (!existsSync(filePath)) return;
+
+  const fd = openSync(filePath, "r");
+  const decoder = new StringDecoder("utf-8");
+  const buffer = Buffer.alloc(64 * 1024);
+  let carry = "";
+
+  try {
+    while (true) {
+      const bytes = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytes === 0) break;
+      carry += decoder.write(buffer.subarray(0, bytes));
+
+      let newlineIndex = carry.indexOf("\n");
+      while (newlineIndex >= 0) {
+        const parsed = parseJsonLine(carry.slice(0, newlineIndex));
+        if (parsed) yield parsed;
+        carry = carry.slice(newlineIndex + 1);
+        newlineIndex = carry.indexOf("\n");
       }
-    });
+    }
+
+    carry += decoder.end();
+    const parsed = parseJsonLine(carry);
+    if (parsed) yield parsed;
+  } finally {
+    closeSync(fd);
+  }
 }
 
 function textFromParts(value: unknown): string | null {
