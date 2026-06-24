@@ -83,7 +83,7 @@ Fields:
 - `claudeHookInstalled` (optional): marks that AgentLog expects the Claude hook to be installed
 - `codexHookInstalled` (optional): marks that AgentLog expects the Codex hook to be installed
 - `codexNotifyRestore` (optional): saved previous Codex notify value, restored on uninstall
-- `englishAsk` (optional): Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true. Results append under `## EnglishAsk`.
+- `englishAsk` (optional): hook prompt evaluator config. Disabled unless `englishAsk.enabled` is true. Evaluator input includes current prompt plus bounded prior user/model transcript context when available, otherwise same-session Daily Note prompt context. Results append under `## EnglishAsk`.
 
 Environment variables:
 - `AGENTLOG_CONFIG_DIR`: override config directory (default: `~/.agentlog`)

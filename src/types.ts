@@ -6,6 +6,8 @@ export interface AgentLogConfig {
   plain?: boolean;
   claudeHookInstalled?: boolean;
   codexHookInstalled?: boolean;
+  hermesHookInstalled?: boolean;
+  hermesProfiles?: string[];
   /** Legacy metadata for pre-hook Codex notify installs. */
   codexNotifyRestore?: string[] | null;
   englishAsk?: EnglishAskConfig;
@@ -17,6 +19,7 @@ export interface EnglishAskConfig {
   threshold?: number;
   timeoutMs?: number;
   maxPromptChars?: number;
+  maxContextChars?: number;
   maxOutputChars?: number;
   evaluatorCommand?: string[];
 }
@@ -28,7 +31,12 @@ export interface EnglishAskFeedback {
 }
 
 /** Source of the log entry — which AI tool produced it */
-export type SourceType = "claude" | "codex";
+export const SOURCE_TYPES = ["claude", "codex", "hermes"] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
+
+export function isSourceType(value: string | undefined): value is SourceType {
+  return SOURCE_TYPES.includes(value as SourceType);
+}
 
 /** A single log entry to be written into a Daily Note */
 export interface LogEntry {

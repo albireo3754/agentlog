@@ -1,13 +1,23 @@
-import { existsSync, readFileSync, statSync, writeFileSync } from "fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
-import type { AgentLogConfig, EnglishAskFeedback } from "./types.js";
+import { StringDecoder } from "string_decoder";
+import type { AgentLogConfig, EnglishAskFeedback, SourceType } from "./types.js";
 
 export const ENGLISHASK_GUARD_ENV = "AGENTLOG_ENGLISHASK_EVAL";
 
-const DEFAULT_TIMEOUT_MS = 8_000;
+const DEFAULT_EVALUATOR_COMMAND = ["codex", "exec", "--ignore-user-config", "--ephemeral", "-"];
+const DEFAULT_TIMEOUT_MS = 20_000;
 const DEFAULT_THRESHOLD = 3;
 const DEFAULT_MAX_PROMPT_CHARS = 2_000;
+const DEFAULT_MAX_CONTEXT_CHARS = 4_000;
 const DEFAULT_MAX_OUTPUT_CHARS = 4_000;
+const DEFAULT_CONTEXT_TURNS = 12;
+
+type RawJson = Record<string, unknown>;
+type ContextTurn = {
+  role: "user" | "assistant";
+  text: string;
+};
 
 function configured(config: AgentLogConfig): boolean {
   return config.englishAsk?.enabled === true;
@@ -32,8 +42,125 @@ function redact(value: string): string {
     .replace(/(Bearer\s+)[A-Za-z0-9._-]{12,}/gi, "$1[redacted-token]");
 }
 
-function buildEvaluatorPrompt(prompt: string): string {
-  return `Evaluate this Codex user prompt for answerability from prior context, not grammar.
+function parseJsonLine(line: string): RawJson | null {
+  if (!line) return null;
+  try {
+    const parsed = JSON.parse(line);
+    return typeof parsed === "object" && parsed !== null ? parsed as RawJson : null;
+  } catch {
+    return null;
+  }
+}
+
+function* readJsonLines(filePath: string): Generator<RawJson> {
+  if (!existsSync(filePath)) return;
+
+  const fd = openSync(filePath, "r");
+  const decoder = new StringDecoder("utf-8");
+  const buffer = Buffer.alloc(64 * 1024);
+  let carry = "";
+
+  try {
+    while (true) {
+      const bytes = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytes === 0) break;
+      carry += decoder.write(buffer.subarray(0, bytes));
+
+      let newlineIndex = carry.indexOf("\n");
+      while (newlineIndex >= 0) {
+        const parsed = parseJsonLine(carry.slice(0, newlineIndex));
+        if (parsed) yield parsed;
+        carry = carry.slice(newlineIndex + 1);
+        newlineIndex = carry.indexOf("\n");
+      }
+    }
+
+    carry += decoder.end();
+    const parsed = parseJsonLine(carry);
+    if (parsed) yield parsed;
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function textFromParts(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (!Array.isArray(value)) return null;
+  const parts = value
+    .filter((part): part is RawJson => typeof part === "object" && part !== null)
+    .filter((part) =>
+      ["text", "input_text", "output_text"].includes(String(part["type"])) &&
+      typeof part["text"] === "string"
+    )
+    .map((part) => part["text"] as string);
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+function compactTurnText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function pushTurn(turns: ContextTurn[], role: ContextTurn["role"], raw: unknown): void {
+  const text = typeof raw === "string" ? raw : textFromParts(raw);
+  const compact = text ? compactTurnText(text) : "";
+  if (!compact) return;
+  const last = turns[turns.length - 1];
+  if (last?.role === role && last.text === compact) return;
+  turns.push({ role, text: compact });
+}
+
+function codexTranscriptTurns(line: RawJson): ContextTurn[] {
+  const payload = line["payload"];
+  if (typeof payload !== "object" || payload === null) return [];
+  const p = payload as RawJson;
+
+  if (line["type"] === "event_msg" && p["type"] === "user_message") {
+    const message = typeof p["message"] === "string" ? p["message"] : null;
+    return message ? [{ role: "user", text: compactTurnText(message) }] : [];
+  }
+  if (line["type"] === "event_msg" && p["type"] === "agent_message") {
+    const message = typeof p["message"] === "string" ? p["message"] : null;
+    return message ? [{ role: "assistant", text: compactTurnText(message) }] : [];
+  }
+  if (line["type"] === "response_item" && p["type"] === "message" && p["role"] === "assistant") {
+    const text = textFromParts(p["content"]);
+    return text ? [{ role: "assistant", text: compactTurnText(text) }] : [];
+  }
+  return [];
+}
+
+function claudeTranscriptTurns(line: RawJson): ContextTurn[] {
+  if (line["isSidechain"] === true) return [];
+  if (line["type"] !== "user" && line["type"] !== "assistant") return [];
+  const message = line["message"];
+  if (typeof message !== "object" || message === null) return [];
+  const m = message as RawJson;
+  if (m["role"] !== "user" && m["role"] !== "assistant") return [];
+  const role = m["role"] as ContextTurn["role"];
+  const text = textFromParts(m["content"]);
+  return text ? [{ role, text: compactTurnText(text) }] : [];
+}
+
+function buildTranscriptContext(transcriptPath: string | undefined, maxTurns = DEFAULT_CONTEXT_TURNS): string | null {
+  if (!transcriptPath || !existsSync(transcriptPath)) return null;
+  const turns: ContextTurn[] = [];
+  for (const line of readJsonLines(transcriptPath)) {
+    for (const turn of [...codexTranscriptTurns(line), ...claudeTranscriptTurns(line)]) {
+      pushTurn(turns, turn.role, turn.text);
+      if (turns.length > maxTurns) {
+        turns.splice(0, turns.length - maxTurns);
+      }
+    }
+  }
+  const context = turns
+    .map((turn) => `${turn.role}: ${turn.text}`)
+    .join("\n")
+    .trim();
+  return context || null;
+}
+
+function buildEvaluatorPrompt(prompt: string, context: string | null): string {
+  return `Evaluate this AgentLog user prompt for answerability from prior context, not grammar.
 
 Score rubric:
 5: directly answerable
@@ -47,6 +174,9 @@ Score: N/5
 Natural version: ...
 Missing context: ...
 Rewrite with: ...
+
+Prior user/model context:
+${context || "(none)"}
 
 User prompt:
 ${prompt}`;
@@ -71,19 +201,26 @@ export function shouldEvaluateEnglishAsk(config: AgentLogConfig, prompt: string)
   return looksLikeEnglish(prompt);
 }
 
-export function evaluateEnglishAsk(config: AgentLogConfig, prompt: string, cwd: string): EnglishAskFeedback | null {
+export function evaluateEnglishAsk(
+  config: AgentLogConfig,
+  prompt: string,
+  cwd: string,
+  context: string | null = null
+): EnglishAskFeedback | null {
   if (!shouldEvaluateEnglishAsk(config, prompt)) return null;
 
   const englishAsk = config.englishAsk ?? {};
   const timeoutMs = englishAsk.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxPromptChars = englishAsk.maxPromptChars ?? DEFAULT_MAX_PROMPT_CHARS;
+  const maxContextChars = englishAsk.maxContextChars ?? DEFAULT_MAX_CONTEXT_CHARS;
   const maxOutputChars = englishAsk.maxOutputChars ?? DEFAULT_MAX_OUTPUT_CHARS;
-  const command = englishAsk.evaluatorCommand ?? ["codex", "exec", "-"];
+  const command = englishAsk.evaluatorCommand ?? DEFAULT_EVALUATOR_COMMAND;
   const [bin, ...args] = command;
   if (!bin) return null;
 
   const sanitizedPrompt = truncate(redact(prompt), maxPromptChars);
-  const input = buildEvaluatorPrompt(sanitizedPrompt);
+  const sanitizedContext = context ? truncate(redact(context), maxContextChars) : null;
+  const input = buildEvaluatorPrompt(sanitizedPrompt, sanitizedContext);
 
   try {
     const result = spawnSync(bin, args, {
@@ -113,6 +250,43 @@ export function evaluateEnglishAsk(config: AgentLogConfig, prompt: string, cwd: 
   } catch {
     return null;
   }
+}
+
+function plainPromptLines(lines: string[]): string[] {
+  return lines
+    .filter((line) => /^- \d{2}:\d{2} /.test(line))
+    .map((line) => line.slice(2));
+}
+
+function sessionPromptLines(lines: string[], entry: { sessionId: string; source?: SourceType }): string[] {
+  const source = entry.source ?? "codex";
+  const divider = `- - - - [[${source}_${entry.sessionId}]]`;
+  const start = lines.lastIndexOf(divider);
+  if (start === -1) return [];
+
+  const prompts: string[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.startsWith("- - - - [[") || line.startsWith("#### ") || /^## [^#]/.test(line)) break;
+    if (/^- \d{2}:\d{2} /.test(line)) prompts.push(line.slice(2));
+  }
+  return prompts;
+}
+
+export function buildEnglishAskContext(
+  filePath: string,
+  entry: { sessionId: string; source?: SourceType; transcriptPath?: string },
+  maxLines = 8
+): string | null {
+  const transcriptContext = buildTranscriptContext(entry.transcriptPath);
+  if (transcriptContext) return transcriptContext;
+
+  if (!existsSync(filePath)) return null;
+  const lines = readFileSync(filePath, "utf-8").split("\n");
+  const prompts = sessionPromptLines(lines, entry);
+  const sourceLines = prompts.length > 0 ? prompts : plainPromptLines(lines);
+  const context = sourceLines.slice(-maxLines).join("\n").trim();
+  return context || null;
 }
 
 export function englishAskSuggestion(config: AgentLogConfig, feedback: EnglishAskFeedback): string | null {
@@ -159,7 +333,7 @@ function insertFeedbackBlock(content: string, block: string): string {
 export function appendEnglishAskFeedback(
   filePath: string,
   feedback: EnglishAskFeedback,
-  entry: { time: string; project: string; cwd: string; sessionId: string },
+  entry: { time: string; project: string; cwd: string; sessionId: string; source?: SourceType },
   config: AgentLogConfig
 ): void {
   const mode = config.englishAsk?.mode ?? "log-only";
@@ -172,7 +346,7 @@ export function appendEnglishAskFeedback(
   const block = [
     `### ${entry.time} · ${entry.project}`,
     `<!-- cwd=${entry.cwd} -->`,
-    `- session: [[codex_${entry.sessionId}]]`,
+    `- session: [[${entry.source ?? "codex"}_${entry.sessionId}]]`,
     `- score: ${scoreText}`,
     `- prompt: ${listItemValue(feedback.prompt)}`,
     `${rewriteHint}`,

@@ -3,10 +3,10 @@
  * AgentLog CLI
  *
  * Commands:
- *   agentlog init [vault] [--plain] [--claude | --codex | --all]
- *                                   — configure Claude hook, Codex hook, or both
- *   agentlog uninstall [-y] [--codex | --all]
- *                                   — remove Claude hook, Codex hook, or both
+ *   agentlog init [vault] [--plain] [--claude | --codex | --hermes | --all]
+ *                                   — configure Claude, Codex, Hermes, or Claude+Codex
+ *   agentlog uninstall [-y] [--codex | --hermes | --all]
+ *                                   — remove Claude, Codex, Hermes, or all metadata
  *   agentlog detect                   — list detected Obsidian vaults
  *   agentlog hook                     — invoked by Claude Code UserPromptSubmit hook
  *   agentlog codex-notify             — legacy Codex notify handler
@@ -20,7 +20,7 @@ import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./con
 import type { AgentLogConfig } from "./types.js";
 import { detectVaults, detectCli } from "./detect.js";
 import { isVersionAtLeast, isCliDisabledOutput, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
-import { registerHook, unregisterHook, inspectClaudeHookState, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
+import { unregisterHook, inspectClaudeHookState, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
 import {
   ask,
   detectBinary,
@@ -44,85 +44,113 @@ import {
 } from "./codex-settings.js";
 import { formatVersionHeadline, formatVersionOutput, getRuntimeInfo, readVersion, resolvePackageRoot } from "./version-info.js";
 import { parseDateArg, runBackfill, type BackfillSource } from "./backfill.js";
+import {
+  hookProviders,
+  providerById,
+  providersForInitTarget,
+  type InitTarget,
+  type UninstallTarget,
+} from "./hook-providers/index.js";
+import { uninstallLegacyCodexNotify } from "./hook-providers/codex.js";
+import { resolveHermesConfigTargets } from "./hermes-config.js";
 import { Command } from "commander";
 
-type InitTarget = "claude" | "codex" | "all";
-type UninstallTarget = "claude" | "codex" | "all";
-
-async function runInit(vaultArg: string, plain: boolean): Promise<void> {
-  const vault = validateVaultOrExit(vaultArg, plain);
-
-  saveMergedConfig(vault, plain, { claudeHookInstalled: true });
-  printSavedConfig(vault, plain);
-  printObsidianCliStatus(plain);
-
-  // Register hook in ~/.claude/settings.json
-  registerHook();
-  console.log(`Hook registered: ${CLAUDE_SETTINGS_PATH}`);
-  console.log(`
-AgentLog is ready. Claude Code prompts will be logged to your Daily Note.`);
+interface HermesCliOptions {
+  hermesProfile?: string[];
+  hermesAllProfiles?: boolean;
 }
 
-async function runCodexInit(vaultArg: string, plain: boolean): Promise<void> {
-  const codexBin = detectBinary("codex");
-  if (!codexBin) {
-    console.error("Error: Codex CLI not found in PATH");
-    process.exit(1);
-  }
-
-  const vault = validateVaultOrExit(vaultArg, plain);
-  let result: CodexHookMutationResult;
-  try {
-    result = registerCodexHook();
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
-  }
-
-  saveMergedConfig(vault, plain, { codexHookInstalled: true });
-  printSavedConfig(vault, plain);
-  printObsidianCliStatus(plain);
-  console.log(`  Codex CLI: ${codexBin}`);
-  console.log(`Codex hook registered: ${CODEX_HOOKS_PATH}`);
-  if (!result.changed) console.log(`  Existing AgentLog Codex hook left unchanged`);
-  console.log(`  Review/trust the hook in Codex with /hooks if prompted.`);
-  console.log(`
-AgentLog is ready. Codex turns will be logged to your Daily Note.`);
+function providerContext(config: AgentLogConfig | null, opts: HermesCliOptions = {}) {
+  return {
+    homeDir: process.env.HOME,
+    hermesHome: process.env.HERMES_HOME,
+    hermesProfiles: opts.hermesProfile && opts.hermesProfile.length > 0 ? opts.hermesProfile : config?.hermesProfiles,
+    hermesAllProfiles: opts.hermesAllProfiles,
+    hermesCommand: agentlogHermesHookCommand(),
+  };
 }
 
-async function runAllInit(vaultArg: string, plain: boolean): Promise<void> {
-  const codexBin = detectBinary("codex");
-  if (!codexBin) {
-    console.error("Error: Codex CLI not found in PATH");
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_/:=.,@%+-]+$/.test(value)) return value;
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function agentlogHermesHookCommand(): string {
+  const agentlogBin = detectBinary("agentlog");
+  return `${shellQuote(agentlogBin || "agentlog")} hook --source hermes`;
+}
+
+function savePatchedConfig(config: AgentLogConfig | null, patch: Partial<AgentLogConfig> | undefined): void {
+  if (!config || !patch) return;
+  const next: AgentLogConfig = { ...config };
+  for (const [key, value] of Object.entries(patch) as Array<[keyof AgentLogConfig, AgentLogConfig[keyof AgentLogConfig]]>) {
+    if (value === undefined) delete next[key];
+    else (next as unknown as Record<string, unknown>)[key] = value;
+  }
+  saveConfig(next);
+}
+
+function validateHermesCliOptions(target: InitTarget | UninstallTarget, opts: HermesCliOptions): void {
+  const hasHermesProfile = !!opts.hermesProfile && opts.hermesProfile.length > 0;
+  if (hasHermesProfile && opts.hermesAllProfiles) {
+    console.error("Error: choose either --hermes-profile or --hermes-all-profiles");
     process.exit(1);
   }
+  if ((hasHermesProfile || opts.hermesAllProfiles) && target !== "hermes") {
+    console.error("Error: Hermes profile options require --hermes");
+    process.exit(1);
+  }
+}
 
+function hermesConfigTargetLines(opts: HermesCliOptions = {}): string[] {
+  return resolveHermesConfigTargets({
+    homeDir: process.env.HOME,
+    hermesHome: process.env.HERMES_HOME,
+    profiles: opts.hermesProfile,
+    allProfiles: opts.hermesAllProfiles,
+  }).map((target) => `${target.profile}:${target.path}`);
+}
+
+async function runProviderInit(vaultArg: string, plain: boolean, target: InitTarget, opts: HermesCliOptions = {}): Promise<void> {
   const vault = validateVaultOrExit(vaultArg, plain);
-  let result: CodexHookMutationResult;
-  try {
-    result = registerCodexHook();
-  } catch (err) {
-    console.error(err instanceof Error ? err.message : String(err));
-    process.exit(1);
+  const providerIds = providersForInitTarget(target);
+  const messages: string[] = [];
+  const configPatch: Partial<AgentLogConfig> = {};
+
+  for (const providerId of providerIds) {
+    const provider = providerById(providerId);
+    try {
+      const result = provider.install({ vault, plain, ...providerContext(loadConfig(), opts) });
+      Object.assign(configPatch, result.configPatch);
+      messages.push(...result.messages);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   }
 
-  saveMergedConfig(vault, plain, { codexHookInstalled: true, claudeHookInstalled: true });
+  saveMergedConfig(vault, plain, configPatch);
   printSavedConfig(vault, plain);
   printObsidianCliStatus(plain);
+  for (const message of messages) console.log(message);
+  if (providerIds.includes("codex")) {
+    console.log(`  Review/trust the hook in Codex with /hooks if prompted.`);
+  }
 
-  registerHook();
-  console.log(`Hook registered: ${CLAUDE_SETTINGS_PATH}`);
-  console.log(`  Codex CLI: ${codexBin}`);
-  console.log(`Codex hook registered: ${CODEX_HOOKS_PATH}`);
-  if (!result.changed) console.log(`  Existing AgentLog Codex hook left unchanged`);
-  console.log(`  Review/trust the hook in Codex with /hooks if prompted.`);
-  console.log(`
-AgentLog is ready. Claude Code prompts and Codex turns will be logged to your Daily Note.`);
+  if (target === "claude") {
+    console.log(`\nAgentLog is ready. Claude Code prompts will be logged to your Daily Note.`);
+  } else if (target === "codex") {
+    console.log(`\nAgentLog is ready. Codex turns will be logged to your Daily Note.`);
+  } else if (target === "hermes") {
+    console.log(`\nAgentLog is ready. Hermes turns will be logged after Hermes accepts the shell hook.`);
+  } else {
+    console.log(`\nAgentLog is ready. Claude Code prompts and Codex turns will be logged to your Daily Note.`);
+  }
 }
 
 async function interactiveInit(
   plain: boolean,
-  runner: (vault: string, plain: boolean) => Promise<void> = runInit
+  runner: (vault: string, plain: boolean) => Promise<void>
 ): Promise<void> {
   if (plain) {
     const folder = await ask("Enter folder path for plain mode: ");
@@ -196,13 +224,8 @@ async function interactiveInit(
 }
 
 function uninstallClaude(configDirPath: string): void {
-  // Remove hook from ~/.claude/settings.json
-  const hookRemoved = unregisterHook();
-  if (hookRemoved) {
-    console.log(`Hook removed: ${CLAUDE_SETTINGS_PATH}`);
-  } else {
-    console.log(`Hook not found (already removed or never registered)`);
-  }
+  const result = hookProviders.claude.uninstall();
+  for (const message of result.messages) console.log(message);
 
   // Remove config directory
   if (existsSync(configDirPath)) {
@@ -217,38 +240,41 @@ function uninstallClaude(configDirPath: string): void {
 
 function uninstallCodex(clearRestoreMetadata: boolean): void {
   const config = loadConfig();
-  let result: CodexHookMutationResult;
+  let result;
   try {
-    result = unregisterCodexHook();
+    result = hookProviders.codex.uninstall();
   } catch (err) {
     console.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
-  if (result.changed) {
-    console.log(`Codex hook removed: ${CODEX_HOOKS_PATH}`);
-  } else {
-    console.log("Codex hook not found (already removed or never registered)");
-  }
+  for (const message of result.messages) console.log(message);
 
-  const legacyNotify = unregisterCodexNotify(config?.codexNotifyRestore ?? null);
-  if (legacyNotify.changed) {
-    const action = legacyNotify.restoreNotify && legacyNotify.restoreNotify.length > 0 ? "restored" : "removed";
-    console.log(`Legacy Codex notify ${action}: ${CODEX_CONFIG_PATH}`);
-  }
+  for (const message of uninstallLegacyCodexNotify(config)) console.log(message);
 
   if (clearRestoreMetadata && config) {
-    const next: AgentLogConfig = { ...config };
-    delete next.codexHookInstalled;
-    delete next.codexNotifyRestore;
-    saveConfig(next);
+    savePatchedConfig(config, { ...result.configPatch, codexNotifyRestore: undefined });
   }
 
   console.log("\nCodex integration uninstalled.");
 }
 
+function uninstallHermes(opts: HermesCliOptions = {}): void {
+  const config = loadConfig();
+  let result;
+  try {
+    result = hookProviders.hermes.uninstall(providerContext(config, opts));
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+  for (const message of result.messages) console.log(message);
+  savePatchedConfig(config, result.configPatch);
+  console.log("\nHermes integration metadata removed.");
+}
+
 // --- Command implementations ---
 
-async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): Promise<void> {
+async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string, opts: HermesCliOptions = {}): Promise<void> {
   if (!vaultArg && target !== "codex") {
     console.error("Error: --dry-run requires a vault path argument");
     process.exit(1);
@@ -274,31 +300,36 @@ async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): 
   if (target === "codex" || target === "all") {
     console.log(`  Would register codex hook integration in: ${CODEX_HOOKS_PATH}`);
   }
+  if (target === "hermes") {
+    console.log(`  Would save Hermes metadata to: ${cfgPath}`);
+    console.log("  Would write Hermes hook config:");
+    for (const line of hermesConfigTargetLines(opts)) console.log(`    ${line}`);
+  }
 }
 
-async function cmdInit(vaultArg: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; all: boolean; dryRun: boolean }): Promise<void> {
+async function cmdInit(vaultArg: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; hermes: boolean; all: boolean; dryRun: boolean; hermesProfile?: string[]; hermesAllProfiles?: boolean }): Promise<void> {
   const { plain, dryRun } = opts;
 
-  if ((opts.all && (opts.claude || opts.codex)) || (opts.claude && opts.codex)) {
-    console.error("Error: choose exactly one target: --claude, --codex, or --all");
+  const selectedTargets = [opts.claude, opts.codex, opts.hermes, opts.all].filter(Boolean).length;
+  if (selectedTargets > 1) {
+    console.error("Error: choose exactly one target: --claude, --codex, --hermes, or --all");
     process.exit(1);
   }
 
-  const target: InitTarget = opts.all ? "all" : opts.codex ? "codex" : "claude";
+  const target: InitTarget = opts.all ? "all" : opts.codex ? "codex" : opts.hermes ? "hermes" : "claude";
+  validateHermesCliOptions(target, opts);
 
   if (dryRun) {
-    await cmdInitDryRun(vaultArg ?? "", plain, target === "claude" ? "hook" : target);
+    await cmdInitDryRun(vaultArg ?? "", plain, target === "claude" ? "hook" : target, opts);
     return;
   }
-
-  const runner = target === "all" ? runAllInit : target === "codex" ? runCodexInit : runInit;
 
   if (!vaultArg) {
-    await interactiveInit(plain, runner);
+    await interactiveInit(plain, (vault, isPlain) => runProviderInit(vault, isPlain, target, opts));
     return;
   }
 
-  await runner(vaultArg, plain);
+  await runProviderInit(vaultArg, plain, target, opts);
 }
 
 async function cmdDetect(opts: { format: string; fields?: string }): Promise<void> {
@@ -481,31 +512,20 @@ async function cmdDoctor(): Promise<void> {
 
   const hasCodexHookMetadata = config?.codexHookInstalled === true;
   const hasClaudeHookMetadata = config?.claudeHookInstalled === true;
-  const hasRestoreMetadata = !!config && Object.prototype.hasOwnProperty.call(config, "codexNotifyRestore");
-  const codexHookState = readCodexHookState();
-  const legacyNotifyState = readCodexNotifyState();
-  const codexRelevant =
-    hasCodexHookMetadata ||
-    hasRestoreMetadata ||
-    codexHookState.kind !== "missing" ||
-    legacyNotifyState.kind !== "missing";
+  const hasHermesHookMetadata = config?.hermesHookInstalled === true;
+  const hermesCtx = providerContext(config);
+  const codexRelevant = hookProviders.codex.isRelevant(config);
+  const hermesRelevant = hookProviders.hermes.isRelevant(config, hermesCtx);
 
   // 6. Claude hook registered and compatible with Claude Code matcher validation.
-  const hookState = inspectClaudeHookState();
+  const hookState = hookProviders.claude.inspect();
   const hookOk = hookState.kind === "registered";
-  const hookDetail = hookState.kind === "registered"
-    ? CLAUDE_SETTINGS_PATH
-    : hookState.kind === "unsupported"
-      ? `${CLAUDE_SETTINGS_PATH} — ${hookState.reason}`
-      : "not registered";
   check(
     "hook",
     hookOk,
-    hookDetail,
-    hookState.kind === "unsupported"
-      ? "run: agentlog init to migrate AgentLog hook, or fix Claude settings"
-      : "run: agentlog init to re-register",
-    codexRelevant && hookState.kind === "missing" && !hasClaudeHookMetadata
+    hookState.detail,
+    hookState.kind === "registered" ? undefined : hookState.repairHint,
+    (codexRelevant || hermesRelevant) && hookState.kind === "missing" && !hasClaudeHookMetadata
   );
 
   // 7. Codex hook checks (only when configured or explicitly requested)
@@ -518,33 +538,25 @@ async function cmdDoctor(): Promise<void> {
       "install Codex CLI, then re-run: agentlog init --codex ~/path/to/vault"
     );
 
-    const detail = codexHookState.kind === "unsupported"
-      ? `${CODEX_HOOKS_PATH} — unsupported hook config (${codexHookState.reason})`
-      : codexHookState.kind === "needs_migration"
-        ? `${CODEX_HOOKS_PATH} — ${codexHookState.reason}`
-      : codexHookState.kind === "registered"
-        ? `${CODEX_HOOKS_PATH} — hook registered`
-        : hasCodexHookMetadata
-          ? `${CODEX_HOOKS_PATH} — not registered (inconsistent state)`
-          : legacyNotifyState.kind === "registered"
-            ? `${CODEX_CONFIG_PATH} — legacy notify registered; migrate to hooks`
-            : legacyNotifyState.kind === "unsupported"
-              ? `${CODEX_CONFIG_PATH} — unsupported legacy notify config (${legacyNotifyState.reason})`
-              : `${CODEX_HOOKS_PATH} — not registered`;
-
+    const codexState = hookProviders.codex.inspect();
     check(
       "codex",
-      codexHookState.kind === "registered",
-      detail,
-      codexHookState.kind === "unsupported"
-        ? "fix hooks.json or move it aside, then run: agentlog init --codex"
-        : codexHookState.kind === "needs_migration"
-          ? "run: agentlog init --codex to migrate the Codex hook"
-        : legacyNotifyState.kind === "unsupported"
-          ? "simplify legacy notify config or move config.toml aside, then run: agentlog init --codex"
-          : hasCodexHookMetadata || hasRestoreMetadata || legacyNotifyState.kind === "registered"
-            ? "run: agentlog init --codex to repair or migrate to hooks"
-          : "run: agentlog init --codex ~/path/to/vault"
+      codexState.kind === "registered",
+      hasCodexHookMetadata && codexState.kind === "missing"
+        ? `${codexState.detail} (inconsistent state)`
+        : codexState.detail,
+      codexState.kind === "registered" ? undefined : codexState.repairHint
+    );
+  }
+
+  if (hermesRelevant) {
+    const hermesState = hookProviders.hermes.inspect(hermesCtx);
+    check(
+      "hermes",
+      hermesState.kind === "registered",
+      hermesState.detail,
+      hermesState.kind === "registered" ? undefined : hermesState.repairHint,
+      !hasHermesHookMetadata
     );
   }
 
@@ -582,7 +594,7 @@ async function cmdOpen(): Promise<void> {
   }
 }
 
-async function cmdHook(_source: "claude" | "codex" = "claude"): Promise<void> {
+async function cmdHook(_source: "claude" | "codex" | "hermes" = "claude"): Promise<void> {
   // Dynamically import hook to avoid loading it unless needed
   await import("./hook.js");
 }
@@ -675,13 +687,14 @@ async function cmdBackfill(dateArg: string | undefined, opts: { source: Backfill
   if (result.filePath) console.log(`  note: ${result.filePath}`);
 }
 
-async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dryRun: boolean }): Promise<void> {
-  if (opts.codex && opts.all) {
-    console.error("Error: choose at most one uninstall target: --codex or --all");
+async function cmdUninstall(opts: { y: boolean; codex: boolean; hermes: boolean; all: boolean; dryRun: boolean; hermesProfile?: string[]; hermesAllProfiles?: boolean }): Promise<void> {
+  if ([opts.codex, opts.hermes, opts.all].filter(Boolean).length > 1) {
+    console.error("Error: choose at most one uninstall target: --codex, --hermes, or --all");
     process.exit(1);
   }
 
-  const target: UninstallTarget = opts.all ? "all" : opts.codex ? "codex" : "claude";
+  const target: UninstallTarget = opts.all ? "all" : opts.codex ? "codex" : opts.hermes ? "hermes" : "claude";
+  validateHermesCliOptions(target, opts);
   const cfgDir = configDir();
 
   if (opts.dryRun) {
@@ -694,15 +707,22 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dr
       console.log(`  Would remove codex hook from: ${CODEX_HOOKS_PATH}`);
       console.log(`  Would restore/remove legacy codex notify in: ${CODEX_CONFIG_PATH}`);
     }
+    if (target === "hermes" || target === "all") {
+      console.log("  Would remove Hermes hook config from:");
+      for (const line of hermesConfigTargetLines(target === "hermes" ? opts : {})) console.log(`    ${line}`);
+      console.log(`  Would remove Hermes metadata from: ${configPath()}`);
+    }
     return;
   }
 
   if (!opts.y && process.stdin.isTTY) {
     const prompt = target === "all"
-      ? "Remove AgentLog Claude hook, Codex hook, and config? [y/N]: "
+      ? "Remove AgentLog Claude hook, Codex hook, Hermes metadata, and config? [y/N]: "
       : target === "codex"
         ? "Remove AgentLog Codex hook and legacy notify integration? [y/N]: "
-        : "Remove AgentLog hook and config? [y/N]: ";
+        : target === "hermes"
+          ? "Remove AgentLog Hermes metadata? [y/N]: "
+          : "Remove AgentLog hook and config? [y/N]: ";
     const answer = await ask(prompt);
     if (answer.toLowerCase() !== "y") {
       console.log("Aborted.");
@@ -715,8 +735,14 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; all: boolean; dr
     return;
   }
 
+  if (target === "hermes") {
+    uninstallHermes(opts);
+    return;
+  }
+
   if (target === "all") {
     uninstallCodex(false);
+    uninstallHermes();
   } else {
     // Check if Codex hook is still registered
     const codexHookState = readCodexHookState();
@@ -771,12 +797,15 @@ const SCHEMA_DATA = {
   commands: [
     {
       name: "init",
-      description: "Configure Claude hook, Codex hook, or both",
+      description: "Configure Claude hook, Codex hook, or Hermes hook",
       arguments: [{ name: "vault", description: "Path to Obsidian vault or plain folder", required: false }],
       options: [
         { flags: "--plain", description: "Write to plain folder without Obsidian timeblock parsing" },
         { flags: "--claude", description: "Register Claude Code hook only (default)" },
         { flags: "--codex", description: "Register Codex hook only" },
+        { flags: "--hermes", description: "Register Hermes shell hook and record metadata" },
+        { flags: "--hermes-profile <profile>", description: "Register a named Hermes profile config (repeatable)" },
+        { flags: "--hermes-all-profiles", description: "Register default plus every existing Hermes profile config" },
         { flags: "--all", description: "Register both Claude hook and Codex hook" },
         { flags: "--dry-run", description: "Show what would happen without making changes" },
         { flags: "--format <format>", description: "Output format: text or json" },
@@ -809,11 +838,14 @@ const SCHEMA_DATA = {
     },
     {
       name: "uninstall",
-      description: "Remove Claude hook, Codex hook, or both",
+      description: "Remove Claude hook, Codex hook, Hermes hook, or all integrations",
       arguments: [],
       options: [
         { flags: "-y", description: "Skip confirmation prompt" },
         { flags: "--codex", description: "Remove Codex hook and legacy notify integration" },
+        { flags: "--hermes", description: "Remove Hermes hook config and metadata" },
+        { flags: "--hermes-profile <profile>", description: "Remove a named Hermes profile config hook (repeatable)" },
+        { flags: "--hermes-all-profiles", description: "Remove default plus every existing Hermes profile config hook" },
         { flags: "--all", description: "Remove Claude hook, Codex hook, legacy notify, and config" },
         { flags: "--dry-run", description: "Show what would happen without making changes" },
         { flags: "--format <format>", description: "Output format: text or json" },
@@ -853,7 +885,9 @@ const SCHEMA_DATA = {
       name: "hook",
       description: "Run hook (called by Claude Code or Codex UserPromptSubmit)",
       arguments: [],
-      options: [],
+      options: [
+        { flags: "--source <source>", description: "Source to record: claude, codex, or hermes" },
+      ],
     },
     {
       name: "codex-notify",
@@ -908,14 +942,17 @@ Options:
 
 program
   .command("init [vault]")
-  .description("Configure Claude hook, Codex hook, or both")
+  .description("Configure Claude hook, Codex hook, or Hermes hook")
   .option("--plain", "Write to plain folder without Obsidian timeblock parsing", false)
   .option("--claude", "Register Claude Code hook only (default)", false)
   .option("--codex", "Register Codex hook only", false)
+  .option("--hermes", "Register Hermes shell hook and record metadata", false)
+  .option("--hermes-profile <profile>", "Register a named Hermes profile config (repeatable)", (value: string, previous: string[]) => [...previous, value], [])
+  .option("--hermes-all-profiles", "Register default plus every existing Hermes profile config", false)
   .option("--all", "Register both Claude hook and Codex hook", false)
   .option("--dry-run", "Show what would happen without making changes", false)
   .option("--format <format>", "Output format: text or json", "text")
-  .action(async (vault: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; all: boolean; dryRun: boolean; format: string }) => {
+  .action(async (vault: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; hermes: boolean; all: boolean; dryRun: boolean; format: string; hermesProfile?: string[]; hermesAllProfiles?: boolean }) => {
     await cmdInit(vault, opts);
   });
 
@@ -953,13 +990,16 @@ program
 
 program
   .command("uninstall")
-  .description("Remove Claude hook, Codex hook, or both")
+  .description("Remove Claude hook, Codex hook, Hermes hook, or all integrations")
   .option("-y", "Skip confirmation prompt", false)
   .option("--codex", "Remove Codex hook and legacy notify integration", false)
+  .option("--hermes", "Remove Hermes hook config and metadata", false)
+  .option("--hermes-profile <profile>", "Remove a named Hermes profile config hook (repeatable)", (value: string, previous: string[]) => [...previous, value], [])
+  .option("--hermes-all-profiles", "Remove default plus every existing Hermes profile config hook", false)
   .option("--all", "Remove Claude hook, Codex hook, legacy notify, and config", false)
   .option("--dry-run", "Show what would happen without making changes", false)
   .option("--format <format>", "Output format: text or json", "text")
-  .action(async (opts: { y: boolean; codex: boolean; all: boolean; dryRun: boolean; format: string }) => {
+  .action(async (opts: { y: boolean; codex: boolean; hermes: boolean; all: boolean; dryRun: boolean; format: string; hermesProfile?: string[]; hermesAllProfiles?: boolean }) => {
     await cmdUninstall(opts);
   });
 
@@ -994,8 +1034,8 @@ program
 program
   .command("hook")
   .description("Run hook (called by Claude Code or Codex UserPromptSubmit)")
-  .option("--source <source>", "Source to record: claude or codex", "claude")
-  .action(async (opts: { source: "claude" | "codex" }) => {
+  .option("--source <source>", "Source to record: claude, codex, or hermes", "claude")
+  .action(async (opts: { source: "claude" | "codex" | "hermes" }) => {
     await cmdHook(opts.source);
   });
 
@@ -1020,10 +1060,9 @@ program.on("command:*", (operands: string[]) => {
   process.exit(1);
 });
 
-await program.parseAsync(process.argv);
-
-// If no subcommand was invoked, print help and exit 0
 if (!process.argv.slice(2).length) {
   program.outputHelp();
   process.exit(0);
 }
+
+await program.parseAsync(process.argv);

@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import {
   ENGLISHASK_GUARD_ENV,
   appendEnglishAskFeedback,
+  buildEnglishAskContext,
   englishAskSuggestion,
   evaluateEnglishAsk,
   shouldEvaluateEnglishAsk,
@@ -81,6 +82,59 @@ describe("EnglishAsk", () => {
     expect(readFileSync(inputPath, "utf-8")).toContain("User prompt:\nWhat should I do next?");
   });
 
+  it("uses a low-overhead Codex exec command by default", () => {
+    const binDir = join(tmp, "bin");
+    const argsPath = join(tmp, "codex-args.txt");
+    const envPath = join(tmp, "codex-env.txt");
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(
+      join(binDir, "codex"),
+      `#!/bin/sh
+printf '%s\\n' "$@" > "${argsPath}"
+printf '%s\\n' "$${ENGLISHASK_GUARD_ENV}" > "${envPath}"
+cat >/dev/null
+printf 'Score: 5/5\\nNatural version: ok\\nMissing context: none\\nRewrite with: none\\n'
+`,
+      "utf-8"
+    );
+    chmodSync(join(binDir, "codex"), 0o755);
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${binDir}:${oldPath ?? ""}`;
+
+    try {
+      const result = evaluateEnglishAsk(
+        { vault: tmp, englishAsk: { enabled: true } },
+        "What should I do next?",
+        tmp
+      );
+
+      expect(result?.score).toBe(5);
+      expect(readFileSync(argsPath, "utf-8")).toBe("exec\n--ignore-user-config\n--ephemeral\n-\n");
+      expect(readFileSync(envPath, "utf-8")).toBe("1\n");
+    } finally {
+      process.env.PATH = oldPath;
+    }
+  });
+
+  it("includes bounded prior context in evaluator input", () => {
+    const { command, inputPath } = fakeEvaluator(
+      "Score: 4/5\nNatural version: yes\nMissing context: none\nRewrite with: none"
+    );
+
+    const result = evaluateEnglishAsk(
+      { vault: tmp, englishAsk: { enabled: true, evaluatorCommand: command } },
+      "what about this session?",
+      tmp,
+      "10:01 Please inspect EnglishAsk\n10:02 Turn it on for hook providers"
+    );
+
+    const input = readFileSync(inputPath, "utf-8");
+    expect(result?.score).toBe(4);
+    expect(input).toContain("Prior user/model context:\n10:01 Please inspect EnglishAsk");
+    expect(input).toContain("10:02 Turn it on for hook providers");
+    expect(input).toContain("User prompt:\nwhat about this session?");
+  });
+
   it("returns null when evaluator fails", () => {
     const script = join(tmp, "fail-englishask.sh");
     writeFileSync(script, "#!/bin/sh\nexit 42\n", "utf-8");
@@ -142,6 +196,107 @@ describe("EnglishAsk", () => {
     expect(result?.prompt).toContain("[redacted-api-key]");
     expect(result?.prompt).toContain("[truncated]");
     expect(readFileSync(inputPath, "utf-8")).not.toContain("sk-abcdefghijklmnopqrstuvwxyz");
+  });
+
+  it("builds context from the matching source session section", () => {
+    const filePath = join(tmp, "2026-03-02.md");
+    writeFileSync(
+      filePath,
+      [
+        "## AgentLog",
+        "#### 10:00 · js/agentlog",
+        "<!-- cwd=/Users/pray/work/js/agentlog -->",
+        "- - - - [[codex_session-a]]",
+        "- 10:00 Start EnglishAsk work",
+        "- 10:01 Add hook support",
+        "- - - - [[claude_session-a]]",
+        "- 10:02 Different provider should not leak",
+        "#### 10:03 · other/project",
+        "- 10:03 Other prompt",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const context = buildEnglishAskContext(filePath, {
+      source: "codex",
+      sessionId: "session-a",
+    });
+
+    expect(context).toBe("10:00 Start EnglishAsk work\n10:01 Add hook support");
+  });
+
+  it("prefers transcript user and assistant turns over Daily Note prompt-only context", () => {
+    const notePath = join(tmp, "2026-03-02.md");
+    const transcriptPath = join(tmp, "transcript.jsonl");
+    writeFileSync(
+      notePath,
+      [
+        "## AgentLog",
+        "#### 10:00 · js/agentlog",
+        "<!-- cwd=/Users/pray/work/js/agentlog -->",
+        "- - - - [[codex_session-a]]",
+        "- 10:00 Daily note prompt only",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+    writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "user_message", message: "Turn on EnglishAsk for hooks" },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "agent_message", message: "EnglishAsk now runs from hook.ts" },
+        }),
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "user_message", message: "What about followups?" },
+        }),
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const context = buildEnglishAskContext(notePath, {
+      source: "codex",
+      sessionId: "session-a",
+      transcriptPath,
+    });
+
+    expect(context).toContain("user: Turn on EnglishAsk for hooks");
+    expect(context).toContain("assistant: EnglishAsk now runs from hook.ts");
+    expect(context).toContain("user: What about followups?");
+    expect(context).not.toContain("Daily note prompt only");
+  });
+
+  it("keeps transcript context bounded to recent turns", () => {
+    const notePath = join(tmp, "2026-03-02.md");
+    const transcriptPath = join(tmp, "large-transcript.jsonl");
+    writeFileSync(notePath, "## AgentLog\n- 10:00 fallback\n", "utf-8");
+    writeFileSync(
+      transcriptPath,
+      Array.from({ length: 20 }, (_, index) =>
+        JSON.stringify({
+          type: "event_msg",
+          payload: { type: "user_message", message: `turn-${index}` },
+        })
+      ).join("\n"),
+      "utf-8"
+    );
+
+    const context = buildEnglishAskContext(notePath, {
+      source: "codex",
+      sessionId: "session-a",
+      transcriptPath,
+    });
+
+    expect(context).not.toContain("turn-0");
+    expect(context).not.toContain("turn-7");
+    expect(context).toContain("turn-8");
+    expect(context).toContain("turn-19");
   });
 
   it("appends feedback to an EnglishAsk Daily Note section", () => {

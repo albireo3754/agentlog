@@ -12,12 +12,22 @@ import { parseHookInput } from "./schema/hook-input.js";
 import { cwdToProject } from "./schema/daily-note.js";
 import { prettyPrompt } from "./schema/pretty-prompt.js";
 import { appendEntry } from "./note-writer.js";
-import type { SourceType } from "./types.js";
+import {
+  ENGLISHASK_GUARD_ENV,
+  appendEnglishAskFeedback,
+  buildEnglishAskContext,
+  englishAskSuggestion,
+  evaluateEnglishAsk,
+  shouldEvaluateEnglishAsk,
+} from "./english-ask.js";
+import { isSourceType, type SourceType } from "./types.js";
 
 function resolveSource(): SourceType {
   const sourceIndex = process.argv.indexOf("--source");
-  const source = sourceIndex >= 0 ? process.argv[sourceIndex + 1] : "claude";
-  return source === "codex" ? "codex" : "claude";
+  if (sourceIndex < 0) return "claude";
+  const source = process.argv[sourceIndex + 1];
+  if (isSourceType(source)) return source;
+  throw new Error(`Unsupported source: ${source ?? ""}`);
 }
 
 /** Read all stdin as a string. Works with both Bun and Node.js. */
@@ -31,7 +41,15 @@ function readStdin(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const source = resolveSource();
+  if (process.env[ENGLISHASK_GUARD_ENV] === "1") return;
+
+  let source: SourceType;
+  try {
+    source = resolveSource();
+  } catch (err) {
+    process.stderr.write(`[agentlog] source error: ${err}\n`);
+    return;
+  }
 
   // 1. Load config — if absent, hint and exit (not initialized)
   const config = loadConfig();
@@ -76,7 +94,23 @@ async function main(): Promise<void> {
   };
 
   try {
-    appendEntry(config, entry, now);
+    const result = appendEntry(config, entry, now);
+    if (source !== "hermes" && shouldEvaluateEnglishAsk(config, parsed.prompt)) {
+      try {
+        const context = buildEnglishAskContext(result.filePath, {
+          ...entry,
+          transcriptPath: parsed.transcriptPath,
+        });
+        const feedback = evaluateEnglishAsk(config, parsed.prompt, parsed.cwd, context);
+        if (feedback) {
+          appendEnglishAskFeedback(result.filePath, feedback, entry, config);
+          const suggestion = englishAskSuggestion(config, feedback);
+          if (suggestion) process.stderr.write(suggestion);
+        }
+      } catch {
+        // EnglishAsk is best-effort; the normal AgentLog entry is already written.
+      }
+    }
   } catch (err) {
     process.stderr.write(`[agentlog] write error: ${err}\n`);
   }

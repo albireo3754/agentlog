@@ -118,6 +118,7 @@ describe("parseHookInput", () => {
       sessionId: "019cb123-ac48-7d22-b5bf-195ee34699af",
       cwd: "/Users/pray/opensource/agentlog",
       prompt: "Reply with exactly: OK",
+      transcriptPath: "/Users/pray/.codex/sessions/example.jsonl",
     });
   });
 
@@ -143,5 +144,38 @@ describe("parseHookInput", () => {
     });
 
     expect(() => parseHookInput(input)).toThrow("UserPromptSubmit");
+  });
+
+  it("parses a Hermes pre_llm_call shell-hook payload", () => {
+    const result = parseHookInput(fixture("hermes-pre-llm-call.json"), { source: "hermes" });
+
+    expect(result).toEqual({
+      sessionId: "hermes-session-123",
+      cwd: "/Users/pray/work/js/agentlog",
+      prompt: "Hermes prompt capture",
+    });
+  });
+
+  it("requires extra.user_message for Hermes pre_llm_call payloads", () => {
+    const input = JSON.stringify({
+      hook_event_name: "pre_llm_call",
+      session_id: "hermes-session-123",
+      cwd: "/some/dir",
+      prompt: "top-level prompt must not satisfy Hermes",
+      extra: {},
+    });
+
+    expect(() => parseHookInput(input, { source: "hermes" })).toThrow("extra.user_message");
+  });
+
+  it("requires pre_llm_call for Hermes source", () => {
+    const input = JSON.stringify({
+      hook_event_name: "UserPromptSubmit",
+      session_id: "hermes-session-123",
+      cwd: "/some/dir",
+      extra: { user_message: "hello" },
+    });
+
+    expect(() => parseHookInput(input, { source: "hermes" })).toThrow("pre_llm_call");
   });
 });
