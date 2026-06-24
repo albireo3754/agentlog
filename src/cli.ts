@@ -52,7 +52,7 @@ import {
   type UninstallTarget,
 } from "./hook-providers/index.js";
 import { uninstallLegacyCodexNotify } from "./hook-providers/codex.js";
-import { HERMES_CONFIG_PATH } from "./hermes-config.js";
+import { resolveHermesConfigTargets } from "./hermes-config.js";
 import { Command } from "commander";
 
 interface HermesCliOptions {
@@ -100,6 +100,15 @@ function validateHermesCliOptions(target: InitTarget | UninstallTarget, opts: He
     console.error("Error: Hermes profile options require --hermes");
     process.exit(1);
   }
+}
+
+function hermesConfigTargetLines(opts: HermesCliOptions = {}): string[] {
+  return resolveHermesConfigTargets({
+    homeDir: process.env.HOME,
+    hermesHome: process.env.HERMES_HOME,
+    profiles: opts.hermesProfile,
+    allProfiles: opts.hermesAllProfiles,
+  }).map((target) => `${target.profile}:${target.path}`);
 }
 
 async function runProviderInit(vaultArg: string, plain: boolean, target: InitTarget, opts: HermesCliOptions = {}): Promise<void> {
@@ -265,7 +274,7 @@ function uninstallHermes(opts: HermesCliOptions = {}): void {
 
 // --- Command implementations ---
 
-async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): Promise<void> {
+async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string, opts: HermesCliOptions = {}): Promise<void> {
   if (!vaultArg && target !== "codex") {
     console.error("Error: --dry-run requires a vault path argument");
     process.exit(1);
@@ -293,7 +302,8 @@ async function cmdInitDryRun(vaultArg: string, plain: boolean, target: string): 
   }
   if (target === "hermes") {
     console.log(`  Would save Hermes metadata to: ${cfgPath}`);
-    console.log(`  Would write Hermes hook config under: ${HERMES_CONFIG_PATH}`);
+    console.log("  Would write Hermes hook config:");
+    for (const line of hermesConfigTargetLines(opts)) console.log(`    ${line}`);
   }
 }
 
@@ -310,7 +320,7 @@ async function cmdInit(vaultArg: string | undefined, opts: { plain: boolean; cla
   validateHermesCliOptions(target, opts);
 
   if (dryRun) {
-    await cmdInitDryRun(vaultArg ?? "", plain, target === "claude" ? "hook" : target);
+    await cmdInitDryRun(vaultArg ?? "", plain, target === "claude" ? "hook" : target, opts);
     return;
   }
 
@@ -684,7 +694,7 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; hermes: boolean;
   }
 
   const target: UninstallTarget = opts.all ? "all" : opts.codex ? "codex" : opts.hermes ? "hermes" : "claude";
-  validateHermesCliOptions(target === "all" ? "hermes" : target, opts);
+  validateHermesCliOptions(target, opts);
   const cfgDir = configDir();
 
   if (opts.dryRun) {
@@ -698,7 +708,8 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; hermes: boolean;
       console.log(`  Would restore/remove legacy codex notify in: ${CODEX_CONFIG_PATH}`);
     }
     if (target === "hermes" || target === "all") {
-      console.log(`  Would remove Hermes hook config from: ${HERMES_CONFIG_PATH}`);
+      console.log("  Would remove Hermes hook config from:");
+      for (const line of hermesConfigTargetLines(target === "hermes" ? opts : {})) console.log(`    ${line}`);
       console.log(`  Would remove Hermes metadata from: ${configPath()}`);
     }
     return;

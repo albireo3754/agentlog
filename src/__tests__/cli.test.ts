@@ -555,6 +555,20 @@ describe("cli init --dry-run", () => {
     expect(stdout).toContain("[dry-run]");
     expect(stdout).toContain("No changes were made");
   });
+
+  it("prints targeted Hermes profile config paths in init dry-run", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+
+    const { stdout, exitCode } = await runCli(
+      ["init", "--hermes", "--hermes-profile", "alpha", "--dry-run", vault],
+      { HOME: tmpHome }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Would write Hermes hook config:");
+    expect(stdout).toContain(`alpha:${join(tmpHome, ".hermes", "profiles", "alpha", "config.yaml")}`);
+  });
 });
 
 describe("cli uninstall --dry-run", () => {
@@ -596,6 +610,27 @@ describe("cli uninstall --dry-run", () => {
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
     const settings = JSON.parse(readFileSync(join(tmpHome, ".claude", "settings.json"), "utf-8"));
     expect(settings.hooks).toBeDefined();
+  });
+
+  it("prints targeted Hermes profile config paths in uninstall dry-run", async () => {
+    const { stdout, exitCode } = await runCli(
+      ["uninstall", "--hermes", "--hermes-profile", "alpha", "--dry-run"],
+      { HOME: tmpHome }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Would remove Hermes hook config from:");
+    expect(stdout).toContain(`alpha:${join(tmpHome, ".hermes", "profiles", "alpha", "config.yaml")}`);
+  });
+
+  it("rejects Hermes profile options with uninstall --all", async () => {
+    const { stderr, exitCode } = await runCli(
+      ["uninstall", "--all", "--hermes-profile", "alpha", "--dry-run"],
+      { HOME: tmpHome }
+    );
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Hermes profile options require --hermes");
   });
 });
 
