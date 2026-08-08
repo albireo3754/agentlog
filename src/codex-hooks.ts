@@ -5,6 +5,7 @@ import { join } from "path";
 export const CODEX_HOOKS_PATH = join(homedir(), ".codex", "hooks.json");
 export const CODEX_HOOKS_BACKUP_PATH = join(homedir(), ".codex", "hooks.json.bak");
 export const AGENTLOG_CODEX_HOOK_COMMAND = "agentlog hook --source codex";
+export const LEGACY_AGENTLOG_CODEX_HOOK_COMMAND = "agentlog hook";
 
 export const CODEX_HOOK_ENTRY = {
   hooks: [
@@ -23,6 +24,7 @@ export interface CodexHookMutationResult {
 export type CodexHookState =
   | { kind: "missing" }
   | { kind: "registered" }
+  | { kind: "needs_migration"; reason: string }
   | { kind: "unsupported"; reason: string };
 
 function parseHooksJson(json: string): Record<string, unknown> {
@@ -60,6 +62,24 @@ function isAgentlogCodexHookHandler(hook: unknown): boolean {
   );
 }
 
+function isLegacyAgentlogCodexHookHandler(hook: unknown): boolean {
+  return (
+    typeof hook === "object" &&
+    hook !== null &&
+    (hook as Record<string, unknown>)["type"] === "command" &&
+    (hook as Record<string, unknown>)["command"] === LEGACY_AGENTLOG_CODEX_HOOK_COMMAND
+  );
+}
+
+function hasLegacyAgentlogCodexHookEntry(entry: unknown): boolean {
+  return (
+    typeof entry === "object" &&
+    entry !== null &&
+    Array.isArray((entry as Record<string, unknown>)["hooks"]) &&
+    ((entry as Record<string, unknown>)["hooks"] as unknown[]).some(isLegacyAgentlogCodexHookHandler)
+  );
+}
+
 function ensureHookArray(root: Record<string, unknown>): unknown[] {
   if (root["hooks"] === undefined) {
     root["hooks"] = {};
@@ -79,36 +99,35 @@ function ensureHookArray(root: Record<string, unknown>): unknown[] {
   return hooks["UserPromptSubmit"] as unknown[];
 }
 
-function formatHooksJson(root: Record<string, unknown>): string {
-  return `${JSON.stringify(root, null, 2)}\n`;
-}
-
-export function installCodexHook(json: string): CodexHookMutationResult {
-  const root = parseHooksJson(json);
-  const userPromptSubmit = ensureHookArray(root);
-
-  if (userPromptSubmit.some(isAgentlogCodexHookEntry)) {
-    return { json, changed: false };
+function pruneUserPromptSubmitState(root: Record<string, unknown>): void {
+  if (typeof root["state"] !== "object" || root["state"] === null || Array.isArray(root["state"])) {
+    return;
   }
 
-  userPromptSubmit.push(CODEX_HOOK_ENTRY);
-  return { json: formatHooksJson(root), changed: true };
+  const state = root["state"] as Record<string, unknown>;
+  for (const key of Object.keys(state)) {
+    if (key.includes(":user_prompt_submit:")) {
+      delete state[key];
+    }
+  }
+  if (Object.keys(state).length === 0) {
+    delete root["state"];
+  }
 }
 
-export function uninstallCodexHook(json: string): CodexHookMutationResult {
-  const root = parseHooksJson(json);
-  if (root["hooks"] === undefined) return { json, changed: false };
+function removeAgentlogHandlers(root: Record<string, unknown>, options: { current: boolean; legacy: boolean }): boolean {
+  if (root["hooks"] === undefined) return false;
   if (typeof root["hooks"] !== "object" || root["hooks"] === null || Array.isArray(root["hooks"])) {
     throw new Error("Unsupported Codex hooks configuration: hooks must be an object");
   }
 
   const hooks = root["hooks"] as Record<string, unknown>;
-  if (hooks["UserPromptSubmit"] === undefined) return { json, changed: false };
+  if (hooks["UserPromptSubmit"] === undefined) return false;
   if (!Array.isArray(hooks["UserPromptSubmit"])) {
     throw new Error("Unsupported Codex hooks configuration: hooks.UserPromptSubmit must be an array");
   }
 
-  let removedAgentlogHandler = false;
+  let removed = false;
   const before = hooks["UserPromptSubmit"] as unknown[];
   const after = before.flatMap((entry) => {
     if (
@@ -121,13 +140,18 @@ export function uninstallCodexHook(json: string): CodexHookMutationResult {
 
     const hookGroup = entry as Record<string, unknown>;
     const handlers = hookGroup["hooks"] as unknown[];
-    const nextHandlers = handlers.filter((handler) => !isAgentlogCodexHookHandler(handler));
+    const nextHandlers = handlers.filter((handler) => {
+      const shouldRemove =
+        (options.current && isAgentlogCodexHookHandler(handler)) ||
+        (options.legacy && isLegacyAgentlogCodexHookHandler(handler));
+      if (shouldRemove) removed = true;
+      return !shouldRemove;
+    });
     if (nextHandlers.length === handlers.length) return [entry];
-    removedAgentlogHandler = true;
     if (nextHandlers.length === 0) return [];
     return [{ ...hookGroup, hooks: nextHandlers }];
   });
-  if (!removedAgentlogHandler) return { json, changed: false };
+  if (!removed) return false;
 
   if (after.length === 0) {
     delete hooks["UserPromptSubmit"];
@@ -138,6 +162,32 @@ export function uninstallCodexHook(json: string): CodexHookMutationResult {
   if (Object.keys(hooks).length === 0) {
     delete root["hooks"];
   }
+  pruneUserPromptSubmitState(root);
+
+  return true;
+}
+
+function formatHooksJson(root: Record<string, unknown>): string {
+  return `${JSON.stringify(root, null, 2)}\n`;
+}
+
+export function installCodexHook(json: string): CodexHookMutationResult {
+  const root = parseHooksJson(json);
+  const removedLegacy = removeAgentlogHandlers(root, { current: false, legacy: true });
+  const userPromptSubmit = ensureHookArray(root);
+
+  if (userPromptSubmit.some(isAgentlogCodexHookEntry)) {
+    return removedLegacy ? { json: formatHooksJson(root), changed: true } : { json, changed: false };
+  }
+
+  userPromptSubmit.push(CODEX_HOOK_ENTRY);
+  return { json: formatHooksJson(root), changed: true };
+}
+
+export function uninstallCodexHook(json: string): CodexHookMutationResult {
+  const root = parseHooksJson(json);
+  const removed = removeAgentlogHandlers(root, { current: true, legacy: true });
+  if (!removed) return { json, changed: false };
 
   if (Object.keys(root).length === 0) {
     return { json: "", changed: true };
@@ -168,11 +218,33 @@ export function inspectCodexHookState(json: string): CodexHookState {
     };
   }
 
-  return userPromptSubmit.some(isAgentlogCodexHookEntry) ? { kind: "registered" } : { kind: "missing" };
+  const hasCurrent = userPromptSubmit.some(isAgentlogCodexHookEntry);
+  const hasLegacy = userPromptSubmit.some(hasLegacyAgentlogCodexHookEntry);
+  if (hasLegacy) {
+    return {
+      kind: "needs_migration",
+      reason: hasCurrent
+        ? "legacy AgentLog Codex hook remains beside the current hook"
+        : "legacy AgentLog Codex hook must be migrated to --source codex",
+    };
+  }
+  return hasCurrent ? { kind: "registered" } : { kind: "missing" };
 }
 
 export function hasAgentlogCodexHook(json: string): boolean {
-  return inspectCodexHookState(json).kind === "registered";
+  let root: Record<string, unknown>;
+  try {
+    root = parseHooksJson(json);
+  } catch {
+    return false;
+  }
+
+  if (typeof root["hooks"] !== "object" || root["hooks"] === null || Array.isArray(root["hooks"])) {
+    return false;
+  }
+
+  const userPromptSubmit = (root["hooks"] as Record<string, unknown>)["UserPromptSubmit"];
+  return Array.isArray(userPromptSubmit) && userPromptSubmit.some(isAgentlogCodexHookEntry);
 }
 
 function readCodexHooksJson(): string {

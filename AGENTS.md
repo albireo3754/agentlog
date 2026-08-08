@@ -113,6 +113,17 @@ Example:
 agentlog open
 ```
 
+### `agentlog backfill [date] [--source all|claude|codex] [--dry-run] [--format text|json]`
+
+Scans local Claude Code and Codex session JSONL files for missed user prompts and appends entries that are not already present in the target Daily Note. Defaults to today and both sources.
+
+Example:
+```
+agentlog backfill
+agentlog backfill 2026-06-19 --source codex
+agentlog backfill --dry-run --format json
+```
+
 ### `agentlog uninstall [-y] [--codex | --all]`
 
 Removes AgentLog integration(s).
@@ -207,7 +218,8 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
   "codexNotifyRestore": null,
   "englishAsk": {
     "enabled": false,
-    "mode": "log-only"
+    "mode": "log-only",
+    "maxContextChars": 4000
   }
 }
 ```
@@ -219,9 +231,9 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
 | `claudeHookInstalled` | no | Marks that AgentLog expects the Claude hook to be installed for doctor/repair checks |
 | `codexHookInstalled` | no | Marks that AgentLog expects the Codex hook to be installed for doctor/repair checks |
 | `codexNotifyRestore` | no | Legacy metadata for older Codex `notify` installs |
-| `englishAsk` | no | Optional Codex prompt evaluator config. Disabled unless `englishAsk.enabled` is true |
+| `englishAsk` | no | Optional hook prompt evaluator config. Disabled unless `englishAsk.enabled` is true |
 
-EnglishAsk evaluates English Codex user prompts with `codex exec` after the normal Daily Note append. Results are written under `## EnglishAsk`; evaluator failures and timeouts are fail-soft. `AGENTLOG_ENGLISHASK_EVAL=1` skips evaluator child notify turns.
+EnglishAsk evaluates English hook prompts with `codex exec` after the normal Daily Note append. The evaluator receives the current raw prompt plus bounded prior user/model context from the hook transcript when available. If no transcript is available, AgentLog falls back to same-session prompt context from the Daily Note. Results are written under `## EnglishAsk`; evaluator failures and timeouts are fail-soft. `AGENTLOG_ENGLISHASK_EVAL=1` skips evaluator child turns.
 
 ## Daily Note Output Format
 

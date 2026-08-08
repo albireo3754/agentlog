@@ -18,6 +18,7 @@ export interface ParsedCodexNotifyInput {
   sessionId: string;
   cwd: string;
   prompt: string;
+  lastAssistantMessage?: string;
 }
 
 export function parseCodexNotifyInput(raw: string): ParsedCodexNotifyInput | null {
@@ -59,5 +60,8 @@ export function parseCodexNotifyInput(raw: string): ParsedCodexNotifyInput | nul
     sessionId: obj["thread-id"] as string,
     cwd: obj["cwd"] as string,
     prompt,
+    lastAssistantMessage: typeof obj["last-assistant-message"] === "string" && obj["last-assistant-message"]
+      ? obj["last-assistant-message"]
+      : undefined,
   };
 }

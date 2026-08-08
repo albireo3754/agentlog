@@ -87,6 +87,10 @@ describe("buildSessionDivider", () => {
     );
   });
 
+  it("returns divider with hermes prefix when source is hermes", () => {
+    expect(buildSessionDivider("sess_abc", "hermes")).toBe("- - - - [[hermes_sess_abc]]");
+  });
+
   it("uses full sessionId when shorter than 8 chars", () => {
     expect(buildSessionDivider("abc", "claude")).toBe("- - - - [[claude_abc]]");
   });

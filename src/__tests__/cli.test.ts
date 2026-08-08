@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from "fs";
+import { chmodSync, mkdirSync, writeFileSync, readFileSync, readdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 import { homedir, tmpdir } from "os";
 import { fileURLToPath } from "url";
@@ -44,6 +44,30 @@ function makeTmpHome(): string {
   const dir = join(tmpdir(), `agentlog-home-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
+}
+
+function makeFakeEnglishAskEvaluator(home: string): { command: string[]; inputPath: string } {
+  const script = join(home, "englishask-eval.sh");
+  const inputPath = join(home, "englishask-input.txt");
+  writeFileSync(
+    script,
+    `#!/bin/sh
+test "$AGENTLOG_ENGLISHASK_EVAL" = "1" || exit 7
+cat > "$1"
+printf 'Score: 3/5\\nNatural version: Explain current status.\\nMissing context: none\\nRewrite with: exact provider/result\\n'
+`,
+    "utf-8"
+  );
+  chmodSync(script, 0o755);
+  return { command: [script, inputPath], inputPath };
+}
+
+function findPlainNotePath(vault: string): string {
+  const file = readdirSync(vault).find((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name));
+  if (!file) {
+    throw new Error(`No plain note found in ${vault}`);
+  }
+  return join(vault, file);
 }
 
 describe("cli init command", () => {
@@ -371,6 +395,25 @@ describe("cli doctor command", () => {
   });
 });
 
+describe("cli backfill command", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it("rejects Hermes as a backfill source until Hermes transcript backfill exists", async () => {
+    const { stderr, exitCode } = await runCli(["backfill", "--source", "hermes", "--dry-run"], { HOME: tmpHome });
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Error: --source must be one of: all, claude, codex");
+  });
+});
+
 describe("cli codex-debug command", () => {
   let tmpHome: string;
 
@@ -512,6 +555,20 @@ describe("cli init --dry-run", () => {
     expect(stdout).toContain("[dry-run]");
     expect(stdout).toContain("No changes were made");
   });
+
+  it("prints targeted Hermes profile config paths in init dry-run", async () => {
+    const vault = join(tmpHome, "Obsidian");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+
+    const { stdout, exitCode } = await runCli(
+      ["init", "--hermes", "--hermes-profile", "alpha", "--dry-run", vault],
+      { HOME: tmpHome }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Would write Hermes hook config:");
+    expect(stdout).toContain(`alpha:${join(tmpHome, ".hermes", "profiles", "alpha", "config.yaml")}`);
+  });
 });
 
 describe("cli uninstall --dry-run", () => {
@@ -553,6 +610,109 @@ describe("cli uninstall --dry-run", () => {
     expect(existsSync(join(tmpHome, ".claude", "settings.json"))).toBe(true);
     const settings = JSON.parse(readFileSync(join(tmpHome, ".claude", "settings.json"), "utf-8"));
     expect(settings.hooks).toBeDefined();
+  });
+
+  it("prints targeted Hermes profile config paths in uninstall dry-run", async () => {
+    const { stdout, exitCode } = await runCli(
+      ["uninstall", "--hermes", "--hermes-profile", "alpha", "--dry-run"],
+      { HOME: tmpHome }
+    );
+
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Would remove Hermes hook config from:");
+    expect(stdout).toContain(`alpha:${join(tmpHome, ".hermes", "profiles", "alpha", "config.yaml")}`);
+  });
+
+  it("rejects Hermes profile options with uninstall --all", async () => {
+    const { stderr, exitCode } = await runCli(
+      ["uninstall", "--all", "--hermes-profile", "alpha", "--dry-run"],
+      { HOME: tmpHome }
+    );
+
+    expect(exitCode).not.toBe(0);
+    expect(stderr).toContain("Hermes profile options require --hermes");
+  });
+});
+
+describe("hook command", () => {
+  let tmpHome: string;
+
+  beforeEach(() => {
+    tmpHome = makeTmpHome();
+  });
+
+  afterEach(() => {
+    rmSync(tmpHome, { recursive: true, force: true });
+  });
+
+  it("appends EnglishAsk feedback for the default Claude source when enabled", async () => {
+    const vault = join(tmpHome, "notes");
+    const cfgDir = join(tmpHome, ".agentlog");
+    const evaluator = makeFakeEnglishAskEvaluator(tmpHome);
+    const transcriptPath = join(tmpHome, "claude-transcript.jsonl");
+    mkdirSync(vault, { recursive: true });
+    mkdirSync(cfgDir, { recursive: true });
+    writeFileSync(
+      transcriptPath,
+      [
+        JSON.stringify({
+          type: "user",
+          message: { role: "user", content: "Enable EnglishAsk everywhere" },
+        }),
+        JSON.stringify({
+          type: "assistant",
+          message: { role: "assistant", content: [{ type: "text", text: "EnglishAsk runs on hook path now" }] },
+        }),
+      ].join("\n"),
+      "utf-8"
+    );
+    writeFileSync(
+      join(cfgDir, "config.json"),
+      JSON.stringify({
+        vault,
+        plain: true,
+        claudeHookInstalled: true,
+        englishAsk: {
+          enabled: true,
+          mode: "log-only",
+          evaluatorCommand: evaluator.command,
+        },
+      }),
+      "utf-8"
+    );
+
+    const raw = JSON.stringify({
+      hook_event_name: "UserPromptSubmit",
+      session_id: "claude-english-session",
+      cwd: "/Users/pray/work/js/agentlog",
+      transcript_path: transcriptPath,
+      prompt: "Explain current EnglishAsk status",
+    });
+    const proc = Bun.spawn(["bun", "run", CLI_PATH, "hook"], {
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+      env: { ...process.env, HOME: tmpHome, AGENTLOG_CONFIG_DIR: cfgDir },
+    });
+    proc.stdin.write(raw);
+    proc.stdin.end();
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+
+    const content = readFileSync(findPlainNotePath(vault), "utf-8");
+    expect(exitCode).toBe(0);
+    expect(stdout).toBe("");
+    expect(stderr).toBe("");
+    expect(content).toContain("Explain current EnglishAsk status");
+    expect(content).toContain("## EnglishAsk");
+    expect(content).toContain("- session: [[claude_claude-english-session]]");
+    expect(content).toContain("- score: 3/5");
+    expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("User prompt:\nExplain current EnglishAsk status");
+    expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("user: Enable EnglishAsk everywhere");
+    expect(readFileSync(evaluator.inputPath, "utf-8")).toContain("assistant: EnglishAsk runs on hook path now");
   });
 });
 
