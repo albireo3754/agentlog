@@ -11,13 +11,19 @@ interface Result {
   exitCode: number;
 }
 
-async function run(cmd: string[], env: Record<string, string>, cwd = process.cwd()): Promise<Result> {
+async function run(cmd: string[], env: Record<string, string>, cwd = process.cwd(), input?: string): Promise<Result> {
   const proc = spawn(cmd, {
     cwd,
     env: { ...process.env, ...env },
+    stdin: input === undefined ? undefined : "pipe",
     stdout: "pipe",
     stderr: "pipe",
   });
+
+  if (input !== undefined) {
+    proc.stdin.write(input);
+    proc.stdin.end();
+  }
 
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -95,18 +101,23 @@ async function main(): Promise<void> {
     assertOk(installed, "agentlog init --codex --plain");
 
     const configJsonPath = join(home, ".agentlog", "config.json");
-    const configTomlPath = join(home, ".codex", "config.toml");
+    const hooksJsonPath = join(home, ".codex", "hooks.json");
     if (!existsSync(configJsonPath)) {
       throw new Error(`config.json missing after init: ${configJsonPath}`);
     }
-    if (!existsSync(configTomlPath)) {
-      throw new Error(`config.toml missing after init: ${configTomlPath}`);
+    if (!existsSync(hooksJsonPath)) {
+      throw new Error(`hooks.json missing after init: ${hooksJsonPath}`);
     }
 
     const config = JSON.parse(readFileSync(configJsonPath, "utf-8")) as {
       vault: string;
       plain?: boolean;
       codexNotifyRestore?: string[] | null;
+      englishAsk?: {
+        enabled?: boolean;
+        mode?: string;
+        evaluatorCommand?: string[];
+      };
     };
     if (config.vault !== notesDir) {
       throw new Error(`config vault mismatch: expected ${notesDir}, got ${config.vault}`);
@@ -115,32 +126,68 @@ async function main(): Promise<void> {
       throw new Error("config plain flag was not set to true");
     }
 
-    const configToml = readFileSync(configTomlPath, "utf-8");
-    if (!configToml.includes('notify = ["agentlog", "codex-notify"]')) {
-      throw new Error("config.toml did not register Codex notify");
+    const hooksJson = readFileSync(hooksJsonPath, "utf-8");
+    if (!hooksJson.includes("agentlog hook --source codex")) {
+      throw new Error("hooks.json did not register Codex UserPromptSubmit hook");
     }
 
-    const notifyFixturePath = join(repoRoot, "src", "__tests__", "fixtures", "codex-notify-single.json");
-    const notifyRaw = readFileSync(notifyFixturePath, "utf-8");
-    const notified = await run(["agentlog", "codex-notify", notifyRaw], env);
-    assertOk(notified, "agentlog codex-notify");
+    const evaluatorPath = join(root, "englishask-eval.sh");
+    const evaluatorInputPath = join(root, "englishask-input.txt");
+    writeExecutable(
+      evaluatorPath,
+      `#!/bin/sh
+test "$AGENTLOG_ENGLISHASK_EVAL" = "1" || exit 7
+cat > "$1"
+printf '%s\\n' 'Score: 4/5' 'Natural version: Reply with exactly OK.' 'Missing context: none' 'Rewrite with: exact expected output'
+`
+    );
+    writeFileSync(
+      configJsonPath,
+      JSON.stringify(
+        {
+          ...config,
+          englishAsk: {
+            enabled: true,
+            mode: "log-only",
+            evaluatorCommand: [evaluatorPath, evaluatorInputPath],
+          },
+        },
+        null,
+        2
+      ),
+      "utf-8"
+    );
+
+    const hookFixturePath = join(repoRoot, "src", "__tests__", "fixtures", "codex-hook-user-prompt-submit.json");
+    const hookRaw = readFileSync(hookFixturePath, "utf-8");
+    const hooked = await run(["agentlog", "hook", "--source", "codex"], env, process.cwd(), hookRaw);
+    assertOk(hooked, "agentlog hook --source codex");
 
     const noteNames = readdirSync(notesDir).filter((name) => /^\d{4}-\d{2}-\d{2}\.md$/.test(name));
     if (noteNames.length === 0) {
-      throw new Error("daily note was not created by codex notify");
+      throw new Error("daily note was not created by Codex hook");
     }
 
     const noteContent = readFileSync(join(notesDir, noteNames[0]), "utf-8");
     if (!noteContent.includes("Reply with exactly: OK")) {
       throw new Error("daily note did not include expected prompt text");
     }
+    if (!noteContent.includes("## EnglishAsk")) {
+      throw new Error("daily note did not include EnglishAsk feedback");
+    }
+    if (!noteContent.includes("- score: 4/5")) {
+      throw new Error("daily note did not include expected EnglishAsk score");
+    }
+    if (!readFileSync(evaluatorInputPath, "utf-8").includes("User prompt:\nReply with exactly: OK")) {
+      throw new Error("EnglishAsk evaluator did not receive the raw prompt");
+    }
 
     const uninstalled = await run(["agentlog", "uninstall", "--codex", "-y"], env);
     assertOk(uninstalled, "agentlog uninstall --codex");
 
-    const postUninstallToml = readFileSync(configTomlPath, "utf-8");
-    if (postUninstallToml.includes('notify = ["agentlog", "codex-notify"]')) {
-      throw new Error("agentlog notify was still present after uninstall");
+    const postUninstallHooks = existsSync(hooksJsonPath) ? readFileSync(hooksJsonPath, "utf-8") : "";
+    if (postUninstallHooks.includes("agentlog hook --source codex")) {
+      throw new Error("agentlog Codex hook was still present after uninstall");
     }
     if (!existsSync(configJsonPath)) {
       throw new Error("config.json should remain after uninstall --codex");
@@ -149,10 +196,10 @@ async function main(): Promise<void> {
     const reinstalled = await run(["agentlog", "init", "--codex", "--plain", notesDir], env);
     assertOk(reinstalled, "reinstall agentlog init --codex --plain");
 
-    const reinstallToml = readFileSync(configTomlPath, "utf-8");
-    const notifyOccurrences = reinstallToml.match(/notify = \["agentlog", "codex-notify"\]/g)?.length ?? 0;
-    if (notifyOccurrences !== 1) {
-      throw new Error(`expected exactly one agentlog notify registration, got ${notifyOccurrences}`);
+    const reinstallHooks = readFileSync(hooksJsonPath, "utf-8");
+    const hookOccurrences = reinstallHooks.match(/agentlog hook --source codex/g)?.length ?? 0;
+    if (hookOccurrences !== 1) {
+      throw new Error(`expected exactly one agentlog Codex hook registration, got ${hookOccurrences}`);
     }
 
     const doctor = await run(["agentlog", "doctor"], env);

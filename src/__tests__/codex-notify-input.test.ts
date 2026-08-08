@@ -15,6 +15,7 @@ describe("parseCodexNotifyInput", () => {
       sessionId: "019cb123-ac48-7d22-b5bf-195ee34699af",
       cwd: "/Users/pray/Obsidian",
       prompt: "Reply with exactly: OK",
+      lastAssistantMessage: "OK",
     });
   });
 

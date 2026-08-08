@@ -482,6 +482,21 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).not.toContain("claude_");
   });
 
+  it("emits hermes-prefixed divider and does not duplicate an existing Hermes session divider", () => {
+    const filePath = writeDailyFile();
+    const sessionId = "hermes-session-123";
+
+    appendEntry(config, makeEntry({ time: "10:53", source: "hermes", sessionId, prompt: "첫 Hermes 작업" }), TEST_DATE);
+    appendEntry(config, makeEntry({ time: "11:07", source: "hermes", sessionId, prompt: "두 번째 Hermes 작업" }), TEST_DATE);
+
+    const content = readFileSync(filePath, "utf-8");
+    expect(content).toContain(`- - - - [[hermes_${sessionId}]]`);
+    expect(content).toContain("- 10:53 첫 Hermes 작업");
+    expect(content).toContain("- 11:07 두 번째 Hermes 작업");
+    const hermesDividerCount = (content.match(/\[\[hermes_hermes-session-123\]\]/g) ?? []).length;
+    expect(hermesDividerCount).toBe(1);
+  });
+
   // N5c: source differs but session id collides → insert a source-specific divider
   // (Codex IDs can look UUID-like and collide with an existing claude_ id; must not be mislabeled.)
   it("inserts a codex divider when source differs from an existing claude divider with the same id", () => {

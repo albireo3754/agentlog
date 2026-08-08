@@ -27,9 +27,12 @@
     "build": "bun build src/cli.ts src/hook.ts --outdir dist --target node",
     "dev": "bun run src/cli.ts",
     "dev:watch": "bun run --watch src/cli.ts",
+    "agent:redteam-loop": "node scripts/agent-redteam-loop.mjs",
     "prepublishOnly": "bun run typecheck",
+    "prd:redteam": "node scripts/prd-redteam.mjs",
     "self-review": "node scripts/self-review.mjs",
     "test": "bun test",
+    "test:hermes-host": "bun run scripts/end-user-hermes-host-smoke.ts",
     "test:install-smoke": "bun run scripts/e2e-bun-link-smoke.ts",
     "typecheck": "tsc --noEmit",
     "postinstall": "node scripts/postinstall.mjs"
@@ -51,6 +54,7 @@
     "typescript": "^5.4.0"
   },
   "dependencies": {
-    "commander": "^14.0.3"
+    "commander": "^14.0.3",
+    "yaml": "^2.9.0"
   }
 }

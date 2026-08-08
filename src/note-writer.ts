@@ -201,10 +201,10 @@ function insertIntoAgentLogSection(content: string, entry: LogEntry): string {
   const metaRe = /^<!-- cwd=(.+?) -->$/;
   const legacyMetaRe = /^<!-- cwd=(.+?) ses=([\w-]+) -->$/;
   const legacyHeaderRe = /^#### .+ <!-- cwd=(.+?) ses=([\w-]+) -->$/;
-  // Match current [[claude_...]]/[[codex_...]] and legacy [[ses_...]]/(ses_...) dividers.
+  // Match current source-prefixed dividers and legacy [[ses_...]]/(ses_...) dividers.
   // Captures the source prefix so session matching stays source-aware: a codex entry
   // must never be filed under a claude_ divider (or vice versa) even when the ids collide.
-  const dividerRe = /^- - - - (?:\[\[(claude|codex|ses)_([\w-]+)\]\]|\((ses)_([\w-]+)\))$/;
+  const dividerRe = /^- - - - (?:\[\[(claude|codex|hermes|ses)_([\w-]+)\]\]|\((ses)_([\w-]+)\))$/;
 
   let projectIdx = -1;
   let projectMetaIdx = -1; // -1 means legacy inline format (no separate metadata line)
