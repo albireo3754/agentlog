@@ -48,6 +48,7 @@ import {
   hookProviders,
   providerById,
   providersForInitTarget,
+  providersForUninstallTarget,
   type InitTarget,
   type UninstallTarget,
 } from "./hook-providers/index.js";
@@ -63,7 +64,7 @@ interface HermesCliOptions {
 function providerContext(config: AgentLogConfig | null, opts: HermesCliOptions = {}) {
   return {
     homeDir: process.env.HOME,
-    hermesHome: process.env.HERMES_HOME,
+    hermesHome: process.env.HERMES_HOME ?? config?.hermesHome,
     hermesProfiles: opts.hermesProfile && opts.hermesProfile.length > 0 ? opts.hermesProfile : config?.hermesProfiles,
     hermesAllProfiles: opts.hermesAllProfiles,
     hermesCommand: agentlogHermesHookCommand(),
@@ -114,13 +115,23 @@ function hermesConfigTargetLines(opts: HermesCliOptions = {}): string[] {
 async function runProviderInit(vaultArg: string, plain: boolean, target: InitTarget, opts: HermesCliOptions = {}): Promise<void> {
   const vault = validateVaultOrExit(vaultArg, plain);
   const providerIds = providersForInitTarget(target);
+  const ctx = { vault, plain, ...providerContext(loadConfig(), opts) };
   const messages: string[] = [];
   const configPatch: Partial<AgentLogConfig> = {};
+
+  try {
+    for (const providerId of providerIds) {
+      providerById(providerId).preflightInstall?.(ctx);
+    }
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 
   for (const providerId of providerIds) {
     const provider = providerById(providerId);
     try {
-      const result = provider.install({ vault, plain, ...providerContext(loadConfig(), opts) });
+      const result = provider.install(ctx);
       Object.assign(configPatch, result.configPatch);
       messages.push(...result.messages);
     } catch (err) {
@@ -270,6 +281,19 @@ function uninstallHermes(opts: HermesCliOptions = {}): void {
   for (const message of result.messages) console.log(message);
   savePatchedConfig(config, result.configPatch);
   console.log("\nHermes integration metadata removed.");
+}
+
+function preflightProviderUninstall(target: UninstallTarget, opts: HermesCliOptions = {}): void {
+  const config = loadConfig();
+  const ctx = providerContext(config, opts);
+  for (const providerId of providersForUninstallTarget(target)) {
+    try {
+      providerById(providerId).preflightUninstall?.(ctx);
+    } catch (err) {
+      console.error(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
+  }
 }
 
 // --- Command implementations ---
@@ -730,6 +754,8 @@ async function cmdUninstall(opts: { y: boolean; codex: boolean; hermes: boolean;
     }
   }
 
+  preflightProviderUninstall(target, target === "hermes" ? opts : {});
+
   if (target === "codex") {
     uninstallCodex(true);
     return;
@@ -808,7 +834,6 @@ const SCHEMA_DATA = {
         { flags: "--hermes-all-profiles", description: "Register default plus every existing Hermes profile config" },
         { flags: "--all", description: "Register both Claude hook and Codex hook" },
         { flags: "--dry-run", description: "Show what would happen without making changes" },
-        { flags: "--format <format>", description: "Output format: text or json" },
       ],
     },
     {
@@ -848,7 +873,6 @@ const SCHEMA_DATA = {
         { flags: "--hermes-all-profiles", description: "Remove default plus every existing Hermes profile config hook" },
         { flags: "--all", description: "Remove Claude hook, Codex hook, legacy notify, and config" },
         { flags: "--dry-run", description: "Show what would happen without making changes" },
-        { flags: "--format <format>", description: "Output format: text or json" },
       ],
     },
     {
@@ -951,8 +975,7 @@ program
   .option("--hermes-all-profiles", "Register default plus every existing Hermes profile config", false)
   .option("--all", "Register both Claude hook and Codex hook", false)
   .option("--dry-run", "Show what would happen without making changes", false)
-  .option("--format <format>", "Output format: text or json", "text")
-  .action(async (vault: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; hermes: boolean; all: boolean; dryRun: boolean; format: string; hermesProfile?: string[]; hermesAllProfiles?: boolean }) => {
+  .action(async (vault: string | undefined, opts: { plain: boolean; claude: boolean; codex: boolean; hermes: boolean; all: boolean; dryRun: boolean; hermesProfile?: string[]; hermesAllProfiles?: boolean }) => {
     await cmdInit(vault, opts);
   });
 
@@ -998,8 +1021,7 @@ program
   .option("--hermes-all-profiles", "Remove default plus every existing Hermes profile config hook", false)
   .option("--all", "Remove Claude hook, Codex hook, legacy notify, and config", false)
   .option("--dry-run", "Show what would happen without making changes", false)
-  .option("--format <format>", "Output format: text or json", "text")
-  .action(async (opts: { y: boolean; codex: boolean; hermes: boolean; all: boolean; dryRun: boolean; format: string; hermesProfile?: string[]; hermesAllProfiles?: boolean }) => {
+  .action(async (opts: { y: boolean; codex: boolean; hermes: boolean; all: boolean; dryRun: boolean; hermesProfile?: string[]; hermesAllProfiles?: boolean }) => {
     await cmdUninstall(opts);
   });
 

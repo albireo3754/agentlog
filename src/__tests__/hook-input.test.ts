@@ -156,6 +156,28 @@ describe("parseHookInput", () => {
     });
   });
 
+  it("marks non-first Hermes pre_llm_call payloads as skipped", () => {
+    const result = parseHookInput(
+      JSON.stringify({
+        hook_event_name: "pre_llm_call",
+        session_id: "hermes-session-123",
+        cwd: "/some/dir",
+        extra: {
+          user_message: "Hermes prompt capture",
+          is_first_turn: false,
+        },
+      }),
+      { source: "hermes" }
+    );
+
+    expect(result).toEqual({
+      sessionId: "hermes-session-123",
+      cwd: "/some/dir",
+      prompt: "Hermes prompt capture",
+      shouldLog: false,
+    });
+  });
+
   it("requires extra.user_message for Hermes pre_llm_call payloads", () => {
     const input = JSON.stringify({
       hook_event_name: "pre_llm_call",

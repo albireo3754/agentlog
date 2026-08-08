@@ -57,6 +57,7 @@ export interface ParsedHookInput {
   cwd: string;
   prompt: string;
   transcriptPath?: string;
+  shouldLog?: boolean;
 }
 
 export interface ParseHookInputOptions {
@@ -116,6 +117,17 @@ export function parseHookInput(raw: string, options: ParseHookInputOptions = {})
       (extra as Record<string, unknown>)["user_message"]
     ) {
       prompt = (extra as Record<string, unknown>)["user_message"] as string;
+      if ((extra as Record<string, unknown>)["is_first_turn"] === false) {
+        return {
+          sessionId: obj["session_id"] as string,
+          cwd: obj["cwd"] as string,
+          prompt,
+          transcriptPath: typeof obj["transcript_path"] === "string" && obj["transcript_path"]
+            ? obj["transcript_path"]
+            : undefined,
+          shouldLog: false,
+        };
+      }
     } else {
       throw new Error("Missing required field for Hermes pre_llm_call: extra.user_message");
     }

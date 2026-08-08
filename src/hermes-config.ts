@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
-import { parseDocument, stringify } from "yaml";
+import { YAMLMap, YAMLSeq, isMap, isScalar, isSeq, parseDocument, type Document, type Node } from "yaml";
 
 export const AGENTLOG_HERMES_HOOK_COMMAND = "agentlog hook --source hermes";
 
@@ -34,6 +34,9 @@ export type HermesHookState =
   | { kind: "unsupported"; reason: string; targets: HermesConfigTarget[] };
 
 export const HERMES_CONFIG_PATH = join(homedir(), ".hermes", "config.yaml");
+type HermesDocument = Document<Node, false>;
+type HermesMap = YAMLMap<unknown, Node>;
+type HermesSeq = YAMLSeq<Node>;
 
 function homeFromOptions(options: HermesConfigTargetOptions): string {
   return options.homeDir ?? homedir();
@@ -64,7 +67,7 @@ function hookCommand(options: HermesConfigTargetOptions): string {
 }
 
 export function resolveHermesConfigTargets(options: HermesConfigTargetOptions = {}): HermesConfigTarget[] {
-  const root = defaultHermesRoot(options);
+  const root = currentHermesHome(options);
   const profiles = normalizeProfiles(options.profiles);
 
   if (options.allProfiles) {
@@ -74,7 +77,13 @@ export function resolveHermesConfigTargets(options: HermesConfigTargetOptions = 
       for (const name of readdirSync(profilesRoot).sort()) {
         const profilePath = join(profilesRoot, name);
         const configPath = join(profilePath, "config.yaml");
-        if (statSync(profilePath).isDirectory() && existsSync(configPath)) {
+        let isDirectory = false;
+        try {
+          isDirectory = statSync(profilePath).isDirectory();
+        } catch {
+          continue;
+        }
+        if (isDirectory && existsSync(configPath)) {
           targets.push({ profile: name, path: configPath });
         }
       }
@@ -100,57 +109,83 @@ export function hermesManualSetupSnippet(): string {
   ].join("\n");
 }
 
-function loadConfigObject(path: string): Record<string, unknown> {
-  if (!existsSync(path)) return {};
+function loadConfigDocument(path: string): HermesDocument {
+  if (!existsSync(path)) {
+    const doc = parseDocument<Node, false>("");
+    doc.contents = new YAMLMap() as Node;
+    return doc;
+  }
 
   const content = readFileSync(path, "utf-8");
-  const doc = parseDocument(content || "{}");
+  const doc = parseDocument<Node, false>(content || "");
   if (doc.errors.length > 0) {
     throw new Error(`Unsupported Hermes config: ${doc.errors[0]?.message ?? "invalid YAML"}`);
   }
-  const parsed = doc.toJS();
-  if (parsed === null || parsed === undefined) return {};
-  if (typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (doc.contents === null) {
+    doc.contents = new YAMLMap() as Node;
+  }
+  if (!isMap(doc.contents)) {
     throw new Error("Unsupported Hermes config: config.yaml must be a YAML object");
   }
-  return parsed as Record<string, unknown>;
+  return doc;
 }
 
-function writeConfigObject(path: string, value: Record<string, unknown>): void {
+function writeConfigDocument(path: string, doc: HermesDocument): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, stringify(value), "utf-8");
+  writeFileSync(path, String(doc), "utf-8");
 }
 
-function ensurePreLlmHookList(config: Record<string, unknown>): Array<Record<string, unknown> | string> {
-  if (config["hooks"] === undefined) config["hooks"] = {};
-  if (typeof config["hooks"] !== "object" || config["hooks"] === null || Array.isArray(config["hooks"])) {
+function ensureRootMap(doc: HermesDocument): HermesMap {
+  if (doc.contents === null) doc.contents = new YAMLMap() as Node;
+  if (!isMap(doc.contents)) {
+    throw new Error("Unsupported Hermes config: config.yaml must be a YAML object");
+  }
+  return doc.contents as HermesMap;
+}
+
+function ensurePreLlmHookList(doc: HermesDocument): HermesSeq {
+  const root = ensureRootMap(doc);
+  let hooks = root.get("hooks", true) as Node | undefined | null;
+  if (hooks === undefined || hooks === null) {
+    hooks = new YAMLMap() as Node;
+    root.set("hooks", hooks);
+  }
+  if (!isMap(hooks)) {
     throw new Error("Unsupported Hermes config: hooks must be an object");
   }
-  const hooks = config["hooks"] as Record<string, unknown>;
-  if (hooks["pre_llm_call"] === undefined) hooks["pre_llm_call"] = [];
-  if (!Array.isArray(hooks["pre_llm_call"])) {
+  const hooksMap = hooks as HermesMap;
+  let preLlmCall = hooksMap.get("pre_llm_call", true) as Node | undefined | null;
+  if (preLlmCall === undefined || preLlmCall === null) {
+    preLlmCall = new YAMLSeq() as Node;
+    hooksMap.set("pre_llm_call", preLlmCall);
+  }
+  if (!isSeq(preLlmCall)) {
     throw new Error("Unsupported Hermes config: hooks.pre_llm_call must be an array");
   }
-  return hooks["pre_llm_call"] as Array<Record<string, unknown> | string>;
+  return preLlmCall as HermesSeq;
 }
 
-function entryCommand(entry: Record<string, unknown> | string): string | null {
-  if (typeof entry === "string") return entry;
-  const command = entry?.["command"];
-  return typeof command === "string" ? command : null;
+function entryCommand(entry: unknown): string | null {
+  if (isScalar(entry)) return typeof entry.value === "string" ? entry.value : null;
+  if (!isMap(entry)) return null;
+  const command = entry.get("command", true);
+  if (typeof command === "string") return command;
+  return isScalar(command) && typeof command.value === "string" ? command.value : null;
 }
 
 function isAgentlogHookCommand(command: string, desiredCommand: string): boolean {
   const trimmed = command.trim();
+  const unquotedAgentlogSuffix = /(?:^|\s)(?:"[^"]*\/agentlog"|'[^']*\/agentlog'|[^'" ]*\/agentlog) hook --source hermes$/;
   return (
     trimmed === desiredCommand ||
     trimmed === AGENTLOG_HERMES_HOOK_COMMAND ||
-    trimmed.endsWith(`/agentlog hook --source hermes`)
+    trimmed.endsWith(`/agentlog hook --source hermes`) ||
+    unquotedAgentlogSuffix.test(trimmed)
   );
 }
 
-function hasDesiredAgentlogHook(list: Array<Record<string, unknown> | string>, desiredCommand: string): boolean {
-  return list.some((entry) => entryCommand(entry) === desiredCommand);
+function hasDesiredAgentlogHook(list: HermesSeq, desiredCommand: string): boolean {
+  return list.items.some((entry) => entryCommand(entry) === desiredCommand);
 }
 
 export function registerHermesHook(options: HermesConfigTargetOptions = {}): HermesConfigMutationResult {
@@ -159,21 +194,21 @@ export function registerHermesHook(options: HermesConfigTargetOptions = {}): Her
   const results: HermesTargetResult[] = [];
 
   for (const target of targets) {
-    const config = loadConfigObject(target.path);
-    const preLlmCall = ensurePreLlmHookList(config);
-    const withoutStaleAgentlog = preLlmCall.filter((entry) => {
+    const doc = loadConfigDocument(target.path);
+    const preLlmCall = ensurePreLlmHookList(doc);
+    const withoutStaleAgentlog = preLlmCall.items.filter((entry) => {
       const existingCommand = entryCommand(entry);
       return existingCommand === null || !isAgentlogHookCommand(existingCommand, command) || existingCommand === command;
     });
-    const removedStale = withoutStaleAgentlog.length !== preLlmCall.length;
+    const removedStale = withoutStaleAgentlog.length !== preLlmCall.items.length;
     if (removedStale) {
-      preLlmCall.splice(0, preLlmCall.length, ...withoutStaleAgentlog);
+      preLlmCall.items.splice(0, preLlmCall.items.length, ...withoutStaleAgentlog);
     }
     const needsAdd = !hasDesiredAgentlogHook(preLlmCall, command);
     const changed = removedStale || needsAdd;
     if (changed) {
-      if (needsAdd) preLlmCall.push({ command });
-      writeConfigObject(target.path, config);
+      if (needsAdd) preLlmCall.items.push(doc.createNode({ command }));
+      writeConfigDocument(target.path, doc);
     }
     results.push({ ...target, changed });
   }
@@ -194,17 +229,16 @@ export function unregisterHermesHook(options: HermesConfigTargetOptions = {}): H
       results.push({ ...target, changed: false });
       continue;
     }
-    const config = loadConfigObject(target.path);
-    const preLlmCall = ensurePreLlmHookList(config);
-    const next = preLlmCall.filter((entry) => {
+    const doc = loadConfigDocument(target.path);
+    const preLlmCall = ensurePreLlmHookList(doc);
+    const next = preLlmCall.items.filter((entry) => {
       const existingCommand = entryCommand(entry);
       return existingCommand === null || !isAgentlogHookCommand(existingCommand, command);
     });
-    const changed = next.length !== preLlmCall.length;
+    const changed = next.length !== preLlmCall.items.length;
     if (changed) {
-      const hooks = config["hooks"] as Record<string, unknown>;
-      hooks["pre_llm_call"] = next;
-      writeConfigObject(target.path, config);
+      preLlmCall.items.splice(0, preLlmCall.items.length, ...next);
+      writeConfigDocument(target.path, doc);
     }
     results.push({ ...target, changed });
   }
@@ -227,9 +261,9 @@ export function readHermesHookState(options: HermesConfigTargetOptions = {}): He
       continue;
     }
     try {
-      const config = loadConfigObject(target.path);
-      const preLlmCall = ensurePreLlmHookList(config);
-      if (preLlmCall.some((entry) => {
+      const doc = loadConfigDocument(target.path);
+      const preLlmCall = ensurePreLlmHookList(doc);
+      if (preLlmCall.items.some((entry) => {
         const existingCommand = entryCommand(entry);
         return existingCommand !== null && isAgentlogHookCommand(existingCommand, command);
       })) registered.push(target);

@@ -62,7 +62,11 @@ describe("hook provider registry", () => {
 
     const uninstall = hookProviders.hermes.uninstall({ hermesProfiles: ["alpha"], homeDir: tmpHome });
     expect(uninstall.changed).toBe(true);
-    expect(uninstall.configPatch).toEqual({ hermesHookInstalled: undefined, hermesProfiles: undefined });
+    expect(uninstall.configPatch).toEqual({
+      hermesHookInstalled: undefined,
+      hermesHome: undefined,
+      hermesProfiles: undefined,
+    });
     expect(readFileSync(join(profileHome, "config.yaml"), "utf-8")).not.toContain("agentlog hook --source hermes");
   });
 });

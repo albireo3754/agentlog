@@ -72,6 +72,7 @@ async function main(): Promise<void> {
     process.stderr.write(`[agentlog] parse error: ${err}\n`);
     return;
   }
+  if (parsed.shouldLog === false) return;
 
   // 4. Build time string
   const now = new Date();

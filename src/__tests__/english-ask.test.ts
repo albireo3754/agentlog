@@ -226,6 +226,31 @@ printf 'Score: 5/5\\nNatural version: ok\\nMissing context: none\\nRewrite with:
     expect(context).toBe("10:00 Start EnglishAsk work\n10:01 Add hook support");
   });
 
+  it("does not fall back to unrelated Daily Note prompts when session context is missing", () => {
+    const filePath = join(tmp, "2026-03-02.md");
+    writeFileSync(
+      filePath,
+      [
+        "## AgentLog",
+        "#### 10:00 · js/agentlog",
+        "<!-- cwd=/Users/pray/work/js/agentlog -->",
+        "- - - - [[codex_session-a]]",
+        "- 10:00 Start EnglishAsk work",
+        "#### 10:03 · other/project",
+        "- 10:03 Other prompt",
+        "",
+      ].join("\n"),
+      "utf-8"
+    );
+
+    const context = buildEnglishAskContext(filePath, {
+      source: "codex",
+      sessionId: "missing-session",
+    });
+
+    expect(context).toBeNull();
+  });
+
   it("prefers transcript user and assistant turns over Daily Note prompt-only context", () => {
     const notePath = join(tmp, "2026-03-02.md");
     const transcriptPath = join(tmp, "transcript.jsonl");

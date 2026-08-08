@@ -37,7 +37,9 @@ export interface HookProvider {
   label: string;
   configFlag: "claudeHookInstalled" | "codexHookInstalled" | "hermesHookInstalled";
   command: string;
+  preflightInstall?(ctx: HookInstallContext): void;
   install(ctx: HookInstallContext): HookInstallResult;
+  preflightUninstall?(ctx?: Partial<HookInstallContext>): void;
   uninstall(ctx?: Partial<HookInstallContext>): HookUninstallResult;
   inspect(ctx?: Partial<HookInstallContext>): HookProviderState;
   isRelevant(config: AgentLogConfig | null, ctx?: Partial<HookInstallContext>): boolean;

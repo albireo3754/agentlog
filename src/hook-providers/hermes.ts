@@ -32,6 +32,11 @@ export const hermesProvider: HookProvider = {
   configFlag: "hermesHookInstalled",
   command: AGENTLOG_HERMES_HOOK_COMMAND,
 
+  preflightInstall(ctx) {
+    const state = readHermesHookState(hermesOptions(ctx));
+    if (state.kind === "unsupported") throw new Error(state.reason);
+  },
+
   install(ctx) {
     const options = hermesOptions(ctx);
     const result = registerHermesHook(options);
@@ -43,9 +48,15 @@ export const hermesProvider: HookProvider = {
       ],
       configPatch: {
         hermesHookInstalled: true,
+        ...(ctx.hermesHome ? { hermesHome: ctx.hermesHome } : {}),
         hermesProfiles: profilesFromTargets(result.targets),
       },
     };
+  },
+
+  preflightUninstall(ctx) {
+    const state = readHermesHookState(hermesOptions(ctx));
+    if (state.kind === "unsupported") throw new Error(state.reason);
   },
 
   uninstall(ctx) {
@@ -57,7 +68,7 @@ export const hermesProvider: HookProvider = {
           ? `Hermes hook removed: ${formatTargets(result.targets)}`
           : `Hermes hook not found: ${formatTargets(result.targets)}`,
       ],
-      configPatch: { hermesHookInstalled: undefined, hermesProfiles: undefined },
+      configPatch: { hermesHookInstalled: undefined, hermesHome: undefined, hermesProfiles: undefined },
     };
   },
 

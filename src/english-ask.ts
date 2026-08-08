@@ -252,12 +252,6 @@ export function evaluateEnglishAsk(
   }
 }
 
-function plainPromptLines(lines: string[]): string[] {
-  return lines
-    .filter((line) => /^- \d{2}:\d{2} /.test(line))
-    .map((line) => line.slice(2));
-}
-
 function sessionPromptLines(lines: string[], entry: { sessionId: string; source?: SourceType }): string[] {
   const source = entry.source ?? "codex";
   const divider = `- - - - [[${source}_${entry.sessionId}]]`;
@@ -283,9 +277,7 @@ export function buildEnglishAskContext(
 
   if (!existsSync(filePath)) return null;
   const lines = readFileSync(filePath, "utf-8").split("\n");
-  const prompts = sessionPromptLines(lines, entry);
-  const sourceLines = prompts.length > 0 ? prompts : plainPromptLines(lines);
-  const context = sourceLines.slice(-maxLines).join("\n").trim();
+  const context = sessionPromptLines(lines, entry).slice(-maxLines).join("\n").trim();
   return context || null;
 }
 

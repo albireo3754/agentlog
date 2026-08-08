@@ -7,6 +7,7 @@ export interface AgentLogConfig {
   claudeHookInstalled?: boolean;
   codexHookInstalled?: boolean;
   hermesHookInstalled?: boolean;
+  hermesHome?: string;
   hermesProfiles?: string[];
   /** Legacy metadata for pre-hook Codex notify installs. */
   codexNotifyRestore?: string[] | null;

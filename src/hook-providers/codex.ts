@@ -16,6 +16,13 @@ export const codexProvider: HookProvider = {
   configFlag: "codexHookInstalled",
   command: "agentlog hook --source codex",
 
+  preflightInstall() {
+    const codexBin = detectBinary("codex");
+    if (!codexBin) throw new Error("Error: Codex CLI not found in PATH");
+    const state = readCodexHookState();
+    if (state.kind === "unsupported") throw new Error(state.reason);
+  },
+
   install() {
     const codexBin = detectBinary("codex");
     if (!codexBin) throw new Error("Error: Codex CLI not found in PATH");
@@ -31,6 +38,11 @@ export const codexProvider: HookProvider = {
       messages,
       configPatch: { codexHookInstalled: true },
     };
+  },
+
+  preflightUninstall() {
+    const state = readCodexHookState();
+    if (state.kind === "unsupported") throw new Error(state.reason);
   },
 
   uninstall() {

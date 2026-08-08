@@ -216,6 +216,7 @@ Current CLI:
 | `claudeHookInstalled` | `false` | Records that AgentLog expects the Claude hook to be installed, so `doctor` does not downgrade a missing Claude hook in `--all` installs |
 | `codexHookInstalled` | `false` | Records that AgentLog expects the Codex hook to be installed, so `doctor` can detect partial damage |
 | `hermesHookInstalled` | `false` | Records that AgentLog expects Hermes hook config to be present, so `doctor` can detect partial damage |
+| `hermesHome` | unset | Hermes config root used by `init --hermes` when `HERMES_HOME` is set; reused by `doctor` and `uninstall --hermes` |
 | `hermesProfiles` | unset | Hermes profiles selected by `init --hermes`; used by `doctor` and `uninstall --hermes` |
 | `codexNotifyRestore` | unset | Legacy metadata for older Codex `notify` installs |
 | `englishAsk` | unset | Optional hook prompt evaluator config. Disabled unless `englishAsk.enabled` is `true` |

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -105,6 +105,23 @@ describe("Hermes config automation", () => {
     expect(read(join(tmpHome, ".hermes", "profiles", "beta", "config.yaml"))).toContain("theme: dark");
   });
 
+  it("resolves selected profiles under HERMES_HOME when provided", () => {
+    const hermesHome = join(tmpHome, "custom-hermes");
+    mkdirSync(join(hermesHome, "profiles", "alpha"), { recursive: true });
+    writeFileSync(join(hermesHome, "profiles", "alpha", "config.yaml"), "hooks: {}\n", "utf-8");
+
+    const targets = resolveHermesConfigTargets({
+      homeDir: tmpHome,
+      hermesHome,
+      profiles: ["default", "alpha"],
+    });
+
+    expect(targets).toEqual([
+      { profile: "default", path: join(hermesHome, "config.yaml") },
+      { profile: "alpha", path: join(hermesHome, "profiles", "alpha", "config.yaml") },
+    ]);
+  });
+
   it("expands allProfiles to every existing named profile plus default", () => {
     mkdirSync(join(tmpHome, ".hermes", "profiles", "alpha"), { recursive: true });
     mkdirSync(join(tmpHome, ".hermes", "profiles", "beta"), { recursive: true });
@@ -115,6 +132,17 @@ describe("Hermes config automation", () => {
     const targets = resolveHermesConfigTargets({ homeDir: tmpHome, allProfiles: true });
 
     expect(targets.map((target) => target.profile)).toEqual(["default", "alpha", "beta"]);
+  });
+
+  it("skips dangling profile links when expanding allProfiles", () => {
+    const profilesRoot = join(tmpHome, ".hermes", "profiles");
+    mkdirSync(join(profilesRoot, "alpha"), { recursive: true });
+    writeFileSync(join(profilesRoot, "alpha", "config.yaml"), "hooks: {}\n", "utf-8");
+    symlinkSync(join(profilesRoot, "missing"), join(profilesRoot, "broken"));
+
+    const targets = resolveHermesConfigTargets({ homeDir: tmpHome, allProfiles: true });
+
+    expect(targets.map((target) => target.profile)).toEqual(["default", "alpha"]);
   });
 
   it("unregisters only the AgentLog hook from selected profiles", () => {
@@ -137,6 +165,43 @@ describe("Hermes config automation", () => {
     expect(result.changed).toBe(true);
     expect(read(configPath)).toContain("command: echo keep");
     expect(read(configPath)).not.toContain(AGENTLOG_HERMES_HOOK_COMMAND);
+  });
+
+  it("preserves user comments when mutating Hermes config YAML", () => {
+    const configPath = join(tmpHome, ".hermes", "config.yaml");
+    mkdirSync(join(tmpHome, ".hermes"), { recursive: true });
+    writeFileSync(
+      configPath,
+      "# keep top comment\nmodel:\n  provider: openai # keep inline comment\nhooks:\n  pre_llm_call:\n    - command: echo keep\n",
+      "utf-8"
+    );
+
+    registerHermesHook({ homeDir: tmpHome });
+
+    const content = read(configPath);
+    expect(content).toContain("# keep top comment");
+    expect(content).toContain("provider: openai # keep inline comment");
+    expect(content).toContain("command: echo keep");
+    expect(content).toContain(AGENTLOG_HERMES_HOOK_COMMAND);
+  });
+
+  it("replaces stale quoted AgentLog hook commands", () => {
+    const configPath = join(tmpHome, ".hermes", "config.yaml");
+    mkdirSync(join(tmpHome, ".hermes"), { recursive: true });
+    writeFileSync(
+      configPath,
+      "hooks:\n  pre_llm_call:\n    - command: \"'/Applications/Agent Log/bin/agentlog' hook --source hermes\"\n",
+      "utf-8"
+    );
+
+    const command = "/Users/pray/.bun/bin/agentlog hook --source hermes";
+    const result = registerHermesHook({ homeDir: tmpHome, command });
+
+    expect(result.changed).toBe(true);
+    const content = read(configPath);
+    expect(content).toContain(command);
+    expect(content).not.toContain("Applications/Agent Log");
+    expect(content.match(/hook --source hermes/g)).toHaveLength(1);
   });
 
   it("reports missing and partial profile state", () => {
