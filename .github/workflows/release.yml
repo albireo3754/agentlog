@@ -14,10 +14,11 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag_exists: ${{ steps.tag_check.outputs.exists }}
+      npm_exists: ${{ steps.npm_check.outputs.exists }}
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Get version from package.json
         id: version
@@ -32,19 +33,28 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Check if npm version exists
+        id: npm_check
+        run: |
+          if npm view "@albireo3754/agentlog@${{ steps.version.outputs.version }}" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Skip if already released
-        if: steps.tag_check.outputs.exists == 'true'
-        run: echo "v${{ steps.version.outputs.version }} already released, skipping."
+        if: steps.npm_check.outputs.exists == 'true'
+        run: echo "@albireo3754/agentlog@${{ steps.version.outputs.version }} already published, skipping."
 
   release:
     needs: check_release
-    if: needs.check_release.outputs.tag_exists == 'false'
+    if: needs.check_release.outputs.npm_exists == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -63,6 +73,7 @@ jobs:
         run: bun run build
 
       - name: Create GitHub Release
+        if: needs.check_release.outputs.tag_exists == 'false'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ needs.check_release.outputs.version }}
@@ -70,12 +81,11 @@ jobs:
           generate_release_notes: true
           target_commitish: main
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
       - name: Publish to npm
-        run: npm publish --access public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
