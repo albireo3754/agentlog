@@ -3,7 +3,6 @@ import { join, dirname, resolve, relative, isAbsolute, sep } from "path";
 import type { AgentLogConfig, LogEntry, WriteResult } from "./types.js";
 import {
   KO_DAYS,
-  dailyNoteFileName,
   buildAgentLogEntry,
   buildSessionDivider,
   buildLatestLine,
@@ -32,11 +31,27 @@ const SUPPORTED_FORMAT_TOKENS = new Set([
   "d",
 ]);
 
-function formatDailyNoteFileName(date: Date, format: string): string | null {
+// Obsidian renders weekday tokens through moment with the app's display
+// language, so the same daily-notes.json format can yield different file
+// names depending on locale (e.g. "2026-08-18-화.md" vs "2026-08-18-Tue.md").
+// agentlog cannot observe that locale, so it computes candidates per locale.
+type WeekdayLocale = "ko" | "en";
+const WEEKDAY_LOCALES: readonly WeekdayLocale[] = ["ko", "en"];
+const EN_DAYS_MIN = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"] as const;
+const EN_DAYS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const EN_DAYS_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+
+/** Default file name format when daily-notes.json has no format (matches dailyNoteFileName). */
+const DEFAULT_DAILY_FORMAT = "YYYY-MM-DD-ddd";
+
+function formatDailyNoteFileName(date: Date, format: string, locale: WeekdayLocale): string | null {
   const baseFormat = format.endsWith(".md") ? format.slice(0, -3) : format;
   const alphaTokens = baseFormat.match(FORMAT_ALPHA_RE) ?? [];
   if (alphaTokens.some((token) => !SUPPORTED_FORMAT_TOKENS.has(token))) return null;
-  const dayShort = KO_DAYS[date.getDay()];
+  const day = date.getDay();
+  const dayMin = locale === "ko" ? KO_DAYS[day] : EN_DAYS_MIN[day];
+  const dayShort = locale === "ko" ? KO_DAYS[day] : EN_DAYS_SHORT[day];
+  const dayLong = locale === "ko" ? `${KO_DAYS[day]}요일` : EN_DAYS_LONG[day];
   const replacements: Record<string, string> = {
     YYYY: String(date.getFullYear()),
     YY: String(date.getFullYear()).slice(-2),
@@ -45,8 +60,8 @@ function formatDailyNoteFileName(date: Date, format: string): string | null {
     DD: pad2(date.getDate()),
     D: String(date.getDate()),
     ddd: dayShort,
-    dddd: `${dayShort}요일`,
-    dd: dayShort,
+    dddd: dayLong,
+    dd: dayMin,
     d: String(date.getDay()),
   };
   const replaced = baseFormat.replace(FORMAT_TOKEN_RE, (token) => replacements[token] ?? token);
@@ -62,23 +77,29 @@ function safeVaultJoin(vault: string, ...segments: string[]): string | null {
 }
 
 /**
- * Read Daily Notes path from .obsidian/daily-notes.json.
- * Avoids spawning the Obsidian CLI binary, which causes renderer reloads.
+ * Compute Daily Note path candidates from .obsidian/daily-notes.json,
+ * one per weekday locale (ko first, then en; deduped when the format has
+ * no weekday token). Avoids spawning the Obsidian CLI binary, which causes
+ * renderer reloads.
  */
-function vaultDailyPath(vault: string, date: Date): string | null {
+function vaultDailyPathCandidates(vault: string, date: Date): string[] {
   const cfgPath = join(vault, ".obsidian", "daily-notes.json");
-  if (!existsSync(cfgPath)) return null;
+  if (!existsSync(cfgPath)) return [];
   try {
     const raw = readFileSync(cfgPath, "utf-8");
     const cfg = JSON.parse(raw) as DailyNotesConfig;
     const folder = typeof cfg.folder === "string" ? cfg.folder.trim() : "Daily";
-    const fileName = cfg.format?.trim()
-      ? formatDailyNoteFileName(date, cfg.format.trim())
-      : dailyNoteFileName(date);
-    if (!fileName) return null;
-    return safeVaultJoin(vault, folder, fileName);
+    const format = cfg.format?.trim() || DEFAULT_DAILY_FORMAT;
+    const candidates: string[] = [];
+    for (const locale of WEEKDAY_LOCALES) {
+      const fileName = formatDailyNoteFileName(date, format, locale);
+      if (!fileName) continue;
+      const path = safeVaultJoin(vault, folder, fileName);
+      if (path && !candidates.includes(path)) candidates.push(path);
+    }
+    return candidates;
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -96,9 +117,13 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string | null
     return join(config.vault, `${yyyy}-${mm}-${dd}.md`);
   }
 
-  // Try .obsidian/daily-notes.json first (no CLI spawn, no renderer reload)
-  const vaultPath = vaultDailyPath(config.vault, date);
-  if (vaultPath) return vaultPath;
+  // Try .obsidian/daily-notes.json first (no CLI spawn, no renderer reload).
+  // Prefer the candidate that already exists — Obsidian may have created the
+  // note under either locale's weekday name.
+  const candidates = vaultDailyPathCandidates(config.vault, date);
+  const existing = candidates.find((p) => existsSync(p));
+  if (existing) return existing;
+  if (candidates.length > 0) return candidates[0];
 
   // Try Obsidian CLI (respects user's Daily Notes folder setting)
   const relativePath = cliDailyPath();
@@ -106,6 +131,32 @@ export function dailyNotePath(config: AgentLogConfig, date: Date): string | null
   if (cliPath) return cliPath;
 
   return null;
+}
+
+/** True when `date` falls on the current calendar day (local time). */
+function isToday(date: Date): boolean {
+  const now = new Date();
+  return (
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate()
+  );
+}
+
+/**
+ * Re-resolve the Daily Note path after an Obsidian CLI bootstrap.
+ * The bootstrapped note is named per Obsidian's locale, which can differ from
+ * the computed candidate; rescan candidates first, then fall back to the CLI's
+ * authoritative path — but only for today, since `daily:path` always answers
+ * for the current day.
+ */
+function resolveBootstrappedPath(config: AgentLogConfig, date: Date): string | null {
+  const resolved = dailyNotePath(config, date);
+  if (resolved && existsSync(resolved)) return resolved;
+  if (!isToday(date)) return null;
+  const relativePath = cliDailyPath();
+  const cliPath = relativePath ? safeVaultJoin(config.vault, relativePath) : null;
+  return cliPath && existsSync(cliPath) ? cliPath : null;
 }
 
 /**
@@ -122,7 +173,7 @@ export function appendEntry(
   entry: LogEntry,
   date: Date = new Date()
 ): WriteResult {
-  const filePath = dailyNotePath(config, date);
+  let filePath = dailyNotePath(config, date);
   if (!filePath) {
     throw new Error("Daily Note path could not be resolved. Enable the Obsidian CLI or configure Daily Notes settings.");
   }
@@ -135,6 +186,9 @@ export function appendEntry(
   if (created) {
     if (!cliEnsureDailyNoteExists()) {
       throw new Error("Daily Note is missing and Obsidian CLI could not create it.");
+    }
+    if (!existsSync(filePath)) {
+      filePath = resolveBootstrappedPath(config, date) ?? filePath;
     }
     if (!existsSync(filePath)) {
       throw new Error("Daily Note is missing after Obsidian CLI bootstrap.");
