@@ -12,6 +12,7 @@ import {
 } from "./schema/daily-note.js";
 import { cliDailyPath, cliEnsureDailyNoteExists } from "./obsidian-cli.js";
 
+import { splitEvents } from "./event-merge.js";
 import { captureEvent, replayFile } from "./event-journal.js";
 
 type DailyNotesConfig = {
@@ -160,7 +161,8 @@ export function appendEntry(
   }
 
   const content = readFileSync(filePath, "utf-8");
-  const newContent = insertIntoAgentLogSection(content, entry);
+  const projection = splitEvents(content);
+  const newContent = insertIntoAgentLogSection(projection.text, entry) + [...projection.events.values()].join("");
   writeFileSync(filePath, newContent, "utf-8");
   return { filePath, created, section: "agentlog" };
 }

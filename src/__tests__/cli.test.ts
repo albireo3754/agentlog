@@ -838,3 +838,11 @@ describe("cli usage", () => {
     expect(exitCode).not.toBe(0);
   });
 });
+
+it("exposes Git sync install, uninstall, and replay in the machine-readable schema", async () => {
+  const { stdout, exitCode } = await runCli(["schema", "git-sync"]);
+  expect(exitCode).toBe(0);
+  const schema = JSON.parse(stdout).data;
+  expect(schema.subcommands.map((command: { name: string }) => command.name)).toEqual(["install", "uninstall", "replay"]);
+  expect(schema.subcommands[0].options[0].flags).toBe("--no-replay-hook");
+});

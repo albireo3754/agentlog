@@ -12,9 +12,13 @@ export const digest = (value: string) => createHash("sha256").update(value).dige
 const singleLine = (value: string) => value.replace(/[\r\n]/g, " ").replace(/-->/g, "--&gt;");
 
 /** Self-contained records never depend on a preceding project's/session's position. */
-export function eventBlock(entry: LogEntry, date: Date, body?: string): string {
+export function eventKey(entry: LogEntry, date: Date): string {
   const id = entry.eventId ? digest(entry.eventId) : randomUUID();
-  const key = `${new Date(entry.timestamp ?? date).toISOString()}_${id}`;
+  return `${new Date(entry.timestamp ?? date).toISOString()}_${id}`;
+}
+
+export function eventBlock(entry: LogEntry, date: Date, body?: string): string {
+  const key = eventKey(entry, date);
   const text = body ?? [
     `#### ${singleLine(entry.time)} · ${singleLine(entry.project)}`,
     `<!-- cwd=${singleLine(entry.cwd)} -->`,
