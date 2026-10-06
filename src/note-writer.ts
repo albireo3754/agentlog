@@ -12,6 +12,8 @@ import {
 } from "./schema/daily-note.js";
 import { cliDailyPath, cliEnsureDailyNoteExists } from "./obsidian-cli.js";
 
+import { captureEvent, replayFile } from "./event-journal.js";
+
 type DailyNotesConfig = {
   folder?: string;
   format?: string;
@@ -125,6 +127,22 @@ export function appendEntry(
   const filePath = dailyNotePath(config, date);
   if (!filePath) {
     throw new Error("Daily Note path could not be resolved. Enable the Obsidian CLI or configure Daily Notes settings.");
+  }
+
+  if (config.gitSync) {
+    captureEvent(config.vault, filePath, entry, date);
+    const created = !existsSync(filePath);
+    if (created) {
+      if (config.plain) {
+        mkdirSync(dirname(filePath), { recursive: true });
+        try { writeFileSync(filePath, `# ${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}\n`, { flag: "wx" }); }
+        catch (e) { if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e; }
+      } else if (!cliEnsureDailyNoteExists() || !existsSync(filePath)) {
+        throw new Error("Event saved to journal; Daily Note is missing. Create it, then run agentlog git-sync replay.");
+      }
+    }
+    replayFile(config.vault, filePath);
+    return { filePath, created, section: config.plain ? "plain" : "agentlog" };
   }
 
   if (config.plain) {

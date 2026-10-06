@@ -4,6 +4,8 @@
 export interface AgentLogConfig {
   vault: string;
   plain?: boolean;
+  /** Immutable event blocks + local durable journal, enabled by git-sync install. */
+  gitSync?: boolean;
   claudeHookInstalled?: boolean;
   codexHookInstalled?: boolean;
   hermesHookInstalled?: boolean;
@@ -41,6 +43,8 @@ export function isSourceType(value: string | undefined): value is SourceType {
 
 /** A single log entry to be written into a Daily Note */
 export interface LogEntry {
+  timestamp?: string; // original timestamp for transcript backfill
+  eventId?: string; // stable source ID when available; otherwise a unique capture
   time: string;     // "HH:MM"
   prompt: string;   // sanitized by prettyPrompt()
   sessionId: string; // from hook session_id

@@ -1,3 +1,4 @@
+import { digest } from "./event-merge.js";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { basename, join } from "path";
 import { homedir } from "os";
@@ -115,8 +116,12 @@ function pushEntry(entries: LogEntry[], raw: string | null, timestamp: string | 
   if (!raw || !sameLocalDate(timestamp, date)) return;
   const prompt = prettyPrompt(raw);
   if (!prompt) return;
+  const identity = digest(JSON.stringify([base.source, base.sessionId, base.cwd, timestamp, prompt]));
+  const occurrence = entries.filter(e => e.eventId?.startsWith(identity + ":")).length;
   entries.push({
     ...base,
+    eventId: `${identity}:${occurrence}`,
+    timestamp,
     time: timeKey(new Date(timestamp!)),
     prompt,
   });
@@ -182,12 +187,13 @@ export function collectBackfillEntries(options: BackfillOptions = {}): { scanned
   };
 }
 
-function noteContainsEntry(config: AgentLogConfig, entry: LogEntry, date: Date): boolean {
+function noteContainsEntry(config: AgentLogConfig, entry: LogEntry, date: Date, occurrence = 1): boolean {
   const path = dailyNotePath(config, date);
   if (!path || !existsSync(path)) return false;
   const content = readFileSync(path, "utf-8");
   const line = buildAgentLogEntry(entry.time, entry.prompt);
-  if (config.plain) return content.includes(line);
+  if (config.plain && !config.gitSync) return content.includes(line);
+  let found = 0;
   const divider = buildSessionDivider(entry.sessionId, entry.source);
   const lines = content.split("\n");
 
@@ -195,7 +201,7 @@ function noteContainsEntry(config: AgentLogConfig, entry: LogEntry, date: Date):
     if (lines[i] !== divider) continue;
 
     for (let j = i + 1; j < lines.length; j++) {
-      if (lines[j] === line) return true;
+      if (lines[j] === line && ++found >= occurrence) return true;
       if (lines[j].startsWith("#### ") || lines[j].startsWith("## ") || /^- - - - (?:\[\[|\()/.test(lines[j])) break;
     }
   }
@@ -210,8 +216,12 @@ export function runBackfill(config: AgentLogConfig, options: BackfillOptions = {
   let inserted = 0;
   let skipped = 0;
 
+  const occurrences = new Map<string, number>();
   for (const entry of entries) {
-    if (noteContainsEntry(config, entry, date)) {
+    const key = JSON.stringify([entry.source, entry.sessionId, entry.time, entry.prompt]);
+    const occurrence = (occurrences.get(key) ?? 0) + 1;
+    occurrences.set(key, occurrence);
+    if (noteContainsEntry(config, entry, date, config.gitSync ? occurrence : 1)) {
       skipped++;
       continue;
     }
