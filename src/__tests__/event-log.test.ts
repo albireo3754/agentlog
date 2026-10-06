@@ -104,3 +104,71 @@ it("fsyncs the journal directory after publishing the event", async () => {
     expect(directories.at(-1)).toBe(true);
   } finally { spy.mockRestore(); }
 });
+it("recovers the first stable record when only the second identical record exists", async () => {
+  const { mkdirSync } = await import("fs");
+  const { collectBackfillEntries, runBackfill } = await import("../backfill.js");
+  const codexHome = join(root, "codex"); const sessions = join(codexHome, "sessions/2026/10/07");
+  mkdirSync(sessions, { recursive: true });
+  writeFileSync(join(sessions, "rollout.jsonl"), [
+    { type: "session_meta", payload: { id: entry.sessionId, cwd: entry.cwd } },
+    ...["12:00:01", "12:00:02"].map(time => ({ timestamp: `2026-10-07T${time}`, type: "event_msg", payload: { type: "user_message", message: entry.prompt } })),
+  ].map(row => JSON.stringify(row)).join("\n"));
+  const config = { vault: root, plain: true, gitSync: true };
+  const opts = { date, source: "codex" as const, codexHome };
+  const entries = collectBackfillEntries(opts).entries;
+  const { filePath } = appendEntry(config, entries[1], date);
+  expect(runBackfill(config, opts).inserted).toBe(1);
+  expect(splitEvents(readFileSync(filePath, "utf8")).events.size).toBe(2);
+  expect(runBackfill(config, opts).inserted).toBe(0);
+});
+it("does not carry Git sync into a different vault during init", async () => {
+  const { saveConfig } = await import("../config.js");
+  const { saveMergedConfig } = await import("../cli-shared.js");
+  saveConfig({ vault: root, gitSync: true });
+  expect(saveMergedConfig(root, true).gitSync).toBe(true);
+  expect(saveMergedConfig(join(root, "another"), true).gitSync).toBe(false);
+});
+it("preserves EnglishAsk as an H2 inside a Git sync event", async () => {
+  const { appendEnglishAskFeedback } = await import("../english-ask.js");
+  const config = { vault: root, plain: true, gitSync: true };
+  const { filePath } = appendEntry(config, entry, date);
+  appendEnglishAskFeedback(filePath, { score: 4, prompt: entry.prompt, feedback: "clear" }, entry, config);
+  expect(readFileSync(filePath, "utf8")).toContain("\n## EnglishAsk\n");
+});
+it("backfills every subset of repeated source events without dropping or duplicating IDs", async () => {
+  const { mkdirSync } = await import("fs");
+  const { collectBackfillEntries, runBackfill } = await import("../backfill.js");
+  const codexHome = join(root, "codex"); const sessions = join(codexHome, "sessions/2026/10/07");
+  mkdirSync(sessions, { recursive: true });
+  writeFileSync(join(sessions, "rollout.jsonl"), [
+    { type: "session_meta", payload: { id: entry.sessionId, cwd: entry.cwd } },
+    ...[1, 2, 3].map(second => ({ timestamp: `2026-10-07T12:00:0${second}`, type: "event_msg", payload: { type: "user_message", message: entry.prompt } })),
+  ].map(row => JSON.stringify(row)).join("\n"));
+  const opts = { date, source: "codex" as const, codexHome };
+  const entries = collectBackfillEntries(opts).entries;
+  for (let mask = 0; mask < 8; mask++) {
+    const vault = join(root, `subset-${mask}`); mkdirSync(vault);
+    const config = { vault, plain: true, gitSync: true };
+    const filePath = join(vault, "2026-10-07.md"); writeFileSync(filePath, "# Daily\n");
+    for (let i = 0; i < 3; i++) if (mask & (1 << i)) appendEntry(config, entries[i], date);
+    runBackfill(config, opts);
+    expect(splitEvents(readFileSync(filePath, "utf8")).events.size).toBe(3);
+    expect(runBackfill(config, opts).inserted).toBe(0);
+  }
+});
+it("keeps immutable blocks valid when legacy logging resumes after uninstall", async () => {
+  const { mkdirSync } = await import("fs");
+  const { appendEnglishAskFeedback } = await import("../english-ask.js");
+  mkdirSync(join(root, ".obsidian"));
+  writeFileSync(join(root, ".obsidian/daily-notes.json"), JSON.stringify({ folder: "", format: "YYYY-MM-DD" }));
+  const filePath = join(root, "2026-10-07.md"); writeFileSync(filePath, "# Day\n\n## AgentLog\n");
+  const config = { vault: root, gitSync: true };
+  appendEntry(config, entry, date);
+  appendEnglishAskFeedback(filePath, { score: 4, prompt: entry.prompt, feedback: "first" }, entry, config);
+  const before = splitEvents(readFileSync(filePath, "utf8")).events;
+  appendEntry({ vault: root }, { ...entry, prompt: "legacy again" }, date);
+  appendEnglishAskFeedback(filePath, { score: 3, prompt: entry.prompt, feedback: "legacy feedback" }, entry, { vault: root });
+  const after = splitEvents(readFileSync(filePath, "utf8"));
+  expect(after.events).toEqual(before);
+  expect(after.text).toContain("legacy again"); expect(after.text).toContain("legacy feedback");
+});

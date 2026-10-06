@@ -56,6 +56,11 @@ export function saveMergedConfig(
     vault,
   };
 
+  // Git attributes/config/hooks are scoped to the original vault, not portable preferences.
+  if (resolve(expandHome(existing.vault)) !== resolve(expandHome(vault)) && existing.gitSync) {
+    next.gitSync = false;
+  }
+
   if (plain) {
     next.plain = true;
   } else {

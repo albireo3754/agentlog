@@ -1,4 +1,4 @@
-import { digest } from "./event-merge.js";
+import { digest, eventKey, splitEvents } from "./event-merge.js";
 import { existsSync, readFileSync, readdirSync, statSync } from "fs";
 import { basename, join } from "path";
 import { homedir } from "os";
@@ -187,13 +187,12 @@ export function collectBackfillEntries(options: BackfillOptions = {}): { scanned
   };
 }
 
-function noteContainsEntry(config: AgentLogConfig, entry: LogEntry, date: Date, occurrence = 1): boolean {
+function noteContainsEntry(config: AgentLogConfig, entry: LogEntry, date: Date): boolean {
   const path = dailyNotePath(config, date);
   if (!path || !existsSync(path)) return false;
   const content = readFileSync(path, "utf-8");
   const line = buildAgentLogEntry(entry.time, entry.prompt);
-  if (config.plain && !config.gitSync) return content.includes(line);
-  let found = 0;
+  if (config.plain) return content.includes(line);
   const divider = buildSessionDivider(entry.sessionId, entry.source);
   const lines = content.split("\n");
 
@@ -201,12 +200,27 @@ function noteContainsEntry(config: AgentLogConfig, entry: LogEntry, date: Date, 
     if (lines[i] !== divider) continue;
 
     for (let j = i + 1; j < lines.length; j++) {
-      if (lines[j] === line && ++found >= occurrence) return true;
+      if (lines[j] === line) return true;
       if (lines[j].startsWith("#### ") || lines[j].startsWith("## ") || /^- - - - (?:\[\[|\()/.test(lines[j])) break;
     }
   }
 
   return false;
+}
+
+/** Match only records without stable transcript identities; exact IDs take precedence. */
+function countSessionEntries(content: string, entry: LogEntry): number {
+  const divider = buildSessionDivider(entry.sessionId, entry.source);
+  const line = buildAgentLogEntry(entry.time, entry.prompt);
+  let cwd = "", matching = false, count = 0;
+  for (const current of content.split("\n")) {
+    if (current.startsWith("#### ") || /^## [^#]/.test(current)) { cwd = ""; matching = false; }
+    const meta = current.match(/^<!-- cwd=(.*?) -->$/);
+    if (meta) cwd = meta[1];
+    if (current.startsWith("- - - - ")) matching = current === divider && cwd === entry.cwd;
+    else if (matching && current === line) count++;
+  }
+  return count;
 }
 
 export function runBackfill(config: AgentLogConfig, options: BackfillOptions = {}): BackfillResult {
@@ -216,15 +230,30 @@ export function runBackfill(config: AgentLogConfig, options: BackfillOptions = {
   let inserted = 0;
   let skipped = 0;
 
-  const occurrences = new Map<string, number>();
+  const content = filePath && existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
+  const projection = config.gitSync ? splitEvents(content) : { text: "", events: new Map<string, string>() };
+  // Stable transcript records must never stand in for another occurrence with the same body.
+  const liveBlocks = [...projection.events].filter(([id]) => /_[a-f0-9-]{36}$/.test(id)).map(([, block]) => block).join("");
+  const remaining = new Map<string, number>();
+  const plainRemaining = new Map<string, number>();
   for (const entry of entries) {
-    const key = JSON.stringify([entry.source, entry.sessionId, entry.time, entry.prompt]);
-    const occurrence = (occurrences.get(key) ?? 0) + 1;
-    occurrences.set(key, occurrence);
-    if (noteContainsEntry(config, entry, date, config.gitSync ? occurrence : 1)) {
-      skipped++;
-      continue;
-    }
+    let present: boolean;
+    if (config.gitSync) {
+      present = projection.events.has(eventKey(entry, date));
+      if (!present) {
+        const key = JSON.stringify([entry.source, entry.sessionId, entry.cwd, entry.time, entry.prompt]);
+        const count = remaining.get(key) ?? countSessionEntries(liveBlocks + (config.plain ? "" : projection.text), entry);
+        remaining.set(key, Math.max(0, count - 1));
+        present = count > 0;
+        if (!present && config.plain) {
+          const line = buildAgentLogEntry(entry.time, entry.prompt);
+          const legacy = plainRemaining.get(line) ?? projection.text.split("\n").filter(l => l === line).length;
+          plainRemaining.set(line, Math.max(0, legacy - 1));
+          present = legacy > 0;
+        }
+      }
+    } else present = noteContainsEntry(config, entry, date);
+    if (present) { skipped++; continue; }
     if (!options.dryRun) appendEntry(config, entry, date);
     inserted++;
   }

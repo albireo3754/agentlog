@@ -1,3 +1,4 @@
+import { splitEvents } from "./event-merge.js";
 import { captureEvent, replayFile } from "./event-journal.js";
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
@@ -347,11 +348,12 @@ export function appendEnglishAskFeedback(
   ].filter(Boolean).join("\n");
 
   if (config.gitSync) {
-    captureEvent(config.vault, filePath, { ...entry, source: entry.source ?? "codex", prompt: feedback.prompt }, new Date(), `### EnglishAsk\n${block}`);
+    captureEvent(config.vault, filePath, { ...entry, source: entry.source ?? "codex", prompt: feedback.prompt }, new Date(), `## EnglishAsk\n${block}`);
     replayFile(config.vault, filePath);
     return;
   }
   const content = existsSync(filePath) ? readFileSync(filePath, "utf-8") : "";
-  const next = insertFeedbackBlock(content, block);
+  const projection = splitEvents(content);
+  const next = insertFeedbackBlock(projection.text, block) + [...projection.events.values()].join("");
   writeFileSync(filePath, next, "utf-8");
 }
