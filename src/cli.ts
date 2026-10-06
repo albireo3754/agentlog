@@ -914,6 +914,19 @@ const SCHEMA_DATA = {
       ],
     },
     {
+      name: "git-sync",
+      description: "Preserve Daily Note events across Git sync",
+      arguments: [],
+      options: [],
+      subcommands: [
+        { name: "install", description: "Install Git integration and enable immutable event logging", arguments: [], options: [
+          { flags: "--no-replay-hook", description: "Preserve an existing post-merge hook; replay manually" },
+        ] },
+        { name: "uninstall", description: "Remove Git integration while retaining the journal", arguments: [], options: [] },
+        { name: "replay", description: "Restore journal events missing from existing notes", arguments: [], options: [] },
+      ],
+    },
+    {
       name: "hook",
       description: "Run hook (called by Claude Code or Codex UserPromptSubmit)",
       arguments: [],

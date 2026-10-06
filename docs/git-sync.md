@@ -48,7 +48,8 @@ rules still win. Verify the attribute for your actual Daily path with:
 git check-attr merge -- Daily/2026-10-07-수.md
 ```
 
-The `.gitattributes` file should be committed with the vault. Git does **not**
+The `.gitattributes` file should be committed with the vault. Re-initializing AgentLog for a different vault resets Git sync mode; install it
+for the new vault explicitly. Git does **not**
 sync local driver configuration or hooks: repeat installation on every device.
 Git clients must execute Git CLI custom merge drivers; web merges and mobile
 clients that do not run them are not supported for automatic event merging.
