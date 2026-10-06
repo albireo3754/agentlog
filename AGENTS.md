@@ -89,7 +89,7 @@ gh pr create --base develop --title "fix: ... (closes #N)"
 - Config: `~/.agentlog/config.json`
 - Hook registered in: `~/.claude/settings.json`
 - Codex hook registered in: `~/.codex/hooks.json`
-- Sessions dir: `~/.agentlog/` (config only; no session JSONL in current version)
+- Config and local recovery journal: `~/.agentlog/` (Git sync events under `journal/`)
 - Config dir override: `AGENTLOG_CONFIG_DIR`
 
 Before running any other command, run `agentlog doctor` to verify the installation is healthy.
@@ -340,3 +340,13 @@ EnglishAsk evaluates English hook prompts with `codex exec` after the normal Dai
 # 2026-03-02
 - 10:53 start building agentlog
 ```
+
+
+## Git sync mode
+
+`agentlog git-sync install` enables immutable event blocks in the same Daily Note,
+a durable local journal, the Git merge driver, and post-merge replay. Install on
+every device. `git-sync replay` projects missing events; `git-sync uninstall`
+removes only integration and retains captured records. Never delete the journal
+as cache, and never replace handwritten conflicts with a blanket union. Existing
+legacy notes are preserved. See `docs/git-sync.md` for the format and guarantees.

@@ -1,3 +1,4 @@
+import { captureEvent, replayFile } from "./event-journal.js";
 import { closeSync, existsSync, openSync, readFileSync, readSync, statSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
 import { StringDecoder } from "string_decoder";
@@ -255,14 +256,12 @@ export function evaluateEnglishAsk(
 function sessionPromptLines(lines: string[], entry: { sessionId: string; source?: SourceType }): string[] {
   const source = entry.source ?? "codex";
   const divider = `- - - - [[${source}_${entry.sessionId}]]`;
-  const start = lines.lastIndexOf(divider);
-  if (start === -1) return [];
-
   const prompts: string[] = [];
-  for (let i = start + 1; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.startsWith("- - - - [[") || line.startsWith("#### ") || /^## [^#]/.test(line)) break;
-    if (/^- \d{2}:\d{2} /.test(line)) prompts.push(line.slice(2));
+  let matching = false;
+  for (const line of lines) {
+    if (line.startsWith("- - - - [[")) { matching = line === divider; continue; }
+    if (line.startsWith("#### ") || /^## [^#]/.test(line)) matching = false;
+    if (matching && /^- \d{2}:\d{2} /.test(line)) prompts.push(line.slice(2));
   }
   return prompts;
 }
@@ -347,6 +346,11 @@ export function appendEnglishAskFeedback(
     fence,
   ].filter(Boolean).join("\n");
 
+  if (config.gitSync) {
+    captureEvent(config.vault, filePath, { ...entry, source: entry.source ?? "codex", prompt: feedback.prompt }, new Date(), `### EnglishAsk\n${block}`);
+    replayFile(config.vault, filePath);
+    return;
+  }
   const content = existsSync(filePath) ? readFileSync(filePath, "utf-8") : "";
   const next = insertFeedbackBlock(content, block);
   writeFileSync(filePath, next, "utf-8");

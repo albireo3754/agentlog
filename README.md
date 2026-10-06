@@ -205,6 +205,19 @@ Current CLI:
 | `agentlog hook` | Invoked automatically by Claude Code or Codex (not for direct use) |
 | `agentlog codex-notify` | Legacy handler for older Codex `notify` installs |
 
+## Multi-device Git sync
+
+After configuring a vault, run `agentlog git-sync install` **on every device**.
+This enables immutable, independently identified log blocks in the same Daily
+Note, a durable local recovery journal, and a Git merge driver that combines
+concurrent log additions without overwriting handwritten text. Recording continues
+during Git operations. A post-merge hook restores captured events overwritten by
+checkout/sync; `agentlog git-sync replay` can also restore them manually.
+
+Genuine handwritten conflicts and edited event blocks still require resolution.
+Git CLI merge-driver support is required. Existing historical logs are preserved.
+See [Git sync setup, recovery, and limitations](docs/git-sync.md).
+
 ## Configuration
 
 `~/.agentlog/config.json`:
@@ -213,6 +226,7 @@ Current CLI:
 |-------|---------|-------------|
 | `vault` | (required) | Path to the Obsidian vault or plain output folder |
 | `plain` | `false` | Plain mode that writes simple markdown files without Obsidian integration |
+| `gitSync` | `false` | Enabled by `git-sync install`: immutable records, local journal, and Git event merging |
 | `claudeHookInstalled` | `false` | Records that AgentLog expects the Claude hook to be installed, so `doctor` does not downgrade a missing Claude hook in `--all` installs |
 | `codexHookInstalled` | `false` | Records that AgentLog expects the Codex hook to be installed, so `doctor` can detect partial damage |
 | `hermesHookInstalled` | `false` | Records that AgentLog expects Hermes hook config to be present, so `doctor` can detect partial damage |

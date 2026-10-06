@@ -16,6 +16,9 @@ import { existsSync, rmSync } from "fs";
 import { join, resolve } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
+import { installGitSync, uninstallGitSync } from "./git-sync-install.js";
+import { dailyNotePath } from "./note-writer.js";
+import { replayJournal } from "./event-journal.js";
 import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./config.js";
 import type { AgentLogConfig } from "./types.js";
 import { detectVaults, detectCli } from "./detect.js";
@@ -238,9 +241,14 @@ function uninstallClaude(configDirPath: string): void {
   const result = hookProviders.claude.uninstall();
   for (const message of result.messages) console.log(message);
 
-  // Remove config directory
+  // Never delete captured events when uninstalling integration/configuration.
+  const config = loadConfig();
+  if (config?.gitSync) uninstallGitSync(config.vault);
   if (existsSync(configDirPath)) {
-    rmSync(configDirPath, { recursive: true, force: true });
+    if (existsSync(join(configDirPath, "journal"))) {
+      rmSync(join(configDirPath, "config.json"), { force: true });
+      console.log(`Captured journal retained: ${join(configDirPath, "journal")}`);
+    } else rmSync(configDirPath, { recursive: true, force: true });
     console.log(`Config removed: ${configDirPath}`);
   } else {
     console.log(`Config not found (already removed)`);
@@ -1051,6 +1059,37 @@ program
   .option("--format <format>", "Output format: text or json", "text")
   .action(async (date: string | undefined, opts: { source: BackfillSource; dryRun: boolean; format: string }) => {
     await cmdBackfill(date, opts);
+  });
+
+const gitSync = program.command("git-sync").description("Preserve Daily Note events across Git sync");
+gitSync.command("install")
+  .description("Install the merge driver and enable immutable event logging for this vault")
+  .option("--no-replay-hook", "Preserve an existing post-merge hook; replay manually")
+  .action((opts: { replayHook: boolean }) => {
+    const config = loadConfig();
+    if (!config) throw new Error("Run agentlog init first");
+    const notePath = dailyNotePath(config, new Date());
+    if (!notePath) throw new Error("Resolve the Daily Note path before installing Git sync");
+    const result = installGitSync(config.vault, opts.replayHook, notePath);
+    saveConfig({ ...config, gitSync: true });
+    console.log(`Git sync event logging enabled. Attributes: ${result.attributes}`);
+    console.log("Run this installation on every device. Existing specific merge attributes retain priority.");
+  });
+gitSync.command("uninstall")
+  .description("Remove Git integration while retaining captured journal records")
+  .action(() => {
+    const config = loadConfig();
+    if (!config) throw new Error("Run agentlog init first");
+    uninstallGitSync(config.vault);
+    saveConfig({ ...config, gitSync: false });
+    console.log("Git sync integration removed; event journal retained.");
+  });
+gitSync.command("replay")
+  .description("Restore journal events missing from existing notes (never recreate missing notes)")
+  .action(() => {
+    const config = loadConfig();
+    if (!config) throw new Error("Run agentlog init first");
+    console.log(JSON.stringify(replayJournal(config.vault)));
   });
 
 program
