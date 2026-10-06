@@ -172,3 +172,11 @@ it("keeps immutable blocks valid when legacy logging resumes after uninstall", a
   expect(after.events).toEqual(before);
   expect(after.text).toContain("legacy again"); expect(after.text).toContain("legacy feedback");
 });
+it("keeps Git sync when the same vault is reinitialized through a symlink", async () => {
+  const { symlinkSync } = await import("fs");
+  const { saveConfig } = await import("../config.js");
+  const { saveMergedConfig } = await import("../cli-shared.js");
+  const alias = join(root, "alias"); symlinkSync(root, alias, "dir");
+  saveConfig({ vault: root, gitSync: true });
+  expect(saveMergedConfig(alias, true).gitSync).toBe(true);
+});

@@ -1,5 +1,5 @@
 import { spawnSync } from "child_process";
-import { existsSync } from "fs";
+import { existsSync, realpathSync } from "fs";
 import { resolve, join } from "path";
 import * as readline from "readline";
 import { detectCli } from "./detect.js";
@@ -44,6 +44,11 @@ export function validateVaultOrExit(vaultArg: string, plain: boolean): string {
   return vault;
 }
 
+function vaultIdentity(path: string): string {
+  const expanded = resolve(expandHome(path));
+  return existsSync(expanded) ? realpathSync(expanded) : expanded;
+}
+
 export function saveMergedConfig(
   vault: string,
   plain: boolean,
@@ -57,7 +62,7 @@ export function saveMergedConfig(
   };
 
   // Git attributes/config/hooks are scoped to the original vault, not portable preferences.
-  if (resolve(expandHome(existing.vault)) !== resolve(expandHome(vault)) && existing.gitSync) {
+  if (vaultIdentity(existing.vault) !== vaultIdentity(vault) && existing.gitSync) {
     next.gitSync = false;
   }
 
