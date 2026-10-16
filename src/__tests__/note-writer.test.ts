@@ -80,6 +80,49 @@ describe("dailyNotePath", () => {
     rmSync(mockBin, { force: true });
   });
 
+  it("prefers an existing English-weekday note over the Korean candidate without invoking CLI", () => {
+    const vault = makeTmpDir();
+    const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
+    const sentinel = join(vault, "cli-called");
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+    mkdirSync(join(vault, "Notes"), { recursive: true });
+    writeFileSync(join(vault, "Notes", "2026-03-01-Sun.md"), "# note", "utf-8");
+    writeFileSync(mockBin, `#!/bin/bash\ntouch ${JSON.stringify(sentinel)}\necho "Cli/should-not-run.md"`, "utf-8");
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Notes/2026-03-01-Sun.md"));
+    expect(existsSync(sentinel)).toBe(false);
+
+    rmSync(mockBin, { force: true });
+    rmSync(vault, { recursive: true, force: true });
+  });
+
+  it("prefers an existing Korean-weekday note when both locale candidates exist", () => {
+    process.env.OBSIDIAN_BIN = "/nonexistent/obsidian";
+    const vault = makeTmpDir();
+    mkdirSync(join(vault, ".obsidian"), { recursive: true });
+    writeFileSync(
+      join(vault, ".obsidian", "daily-notes.json"),
+      JSON.stringify({ folder: "Notes", format: "YYYY-MM-DD-ddd" }),
+      "utf-8",
+    );
+    mkdirSync(join(vault, "Notes"), { recursive: true });
+    writeFileSync(join(vault, "Notes", "2026-03-01-일.md"), "# ko", "utf-8");
+    writeFileSync(join(vault, "Notes", "2026-03-01-Sun.md"), "# en", "utf-8");
+
+    const path = dailyNotePath({ vault }, TEST_DATE);
+    expect(path).toBe(join(vault, "Notes/2026-03-01-일.md"));
+
+    rmSync(vault, { recursive: true, force: true });
+  });
+
   it("uses Daily Notes folder config without invoking CLI", () => {
     const vault = makeTmpDir();
     const mockBin = join(tmpdir(), `mock-obs-${Date.now()}`);
@@ -330,6 +373,36 @@ describe("appendEntry — session-grouped AgentLog section", () => {
     expect(content).toContain("#### 10:53 · js/agentlog");
     expect(content).toContain("<!-- cwd=/Users/pray/work/js/agentlog -->");
     expect(content).toContain("- - - - [[claude_abc12345-def6-7890-abcd-ef1234567890]]");
+    expect(content).toContain("- 10:53 테스트 작업");
+  });
+
+  it("appends into the note Obsidian bootstraps under a different locale's weekday name", () => {
+    // Obsidian's locale renders "ddd" as "Sun" while agentlog's ko candidate expects "일".
+    const mockBin = join(tmpDir, "mock-obsidian-en");
+    const enFilePath = join(tmpDir, "Daily", "2026-03-01-Sun.md");
+    writeFileSync(
+      mockBin,
+      [
+        "#!/bin/bash",
+        "if [ \"$1\" = \"daily\" ]; then",
+        `  printf '%s' "# 2026-03-01" > ${JSON.stringify(enFilePath)}`,
+        "  exit 0",
+        "fi",
+        "exit 1",
+      ].join("\n"),
+      "utf-8"
+    );
+    chmodSync(mockBin, 0o755);
+    process.env.OBSIDIAN_BIN = mockBin;
+
+    const result = appendEntry(config, makeEntry(), TEST_DATE);
+
+    expect(result.created).toBe(true);
+    expect(result.filePath).toBe(enFilePath);
+    expect(existsSync(dailyFilePath())).toBe(false);
+
+    const content = readFileSync(enFilePath, "utf-8");
+    expect(content).toContain("## AgentLog");
     expect(content).toContain("- 10:53 테스트 작업");
   });
 
