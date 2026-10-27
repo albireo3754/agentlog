@@ -27,8 +27,14 @@ export const DAILY_BOOTSTRAP_TIMEOUT_MS = 10000;
  */
 export function cliPreflightError(bin: string, allowLaunch = false): string | null {
   if (process.platform !== "darwin") return null;
+  let path = bin;
+  if (!bin.includes("/")) {
+    const lookup = spawnSync("which", [bin], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS, env: process.env });
+    if (lookup.status !== 0 || !lookup.stdout.trim()) return "Obsidian CLI executable not found";
+    path = lookup.stdout.trim();
+  }
   let executable: string;
-  try { executable = realpathSync(bin); } catch { return "Obsidian CLI executable not found"; }
+  try { executable = realpathSync(path); } catch { return "Obsidian CLI executable not found"; }
   if (!/\.app\/Contents\/MacOS\/[^/]+$/.test(executable)) return null;
 
   const plist = join(dirname(dirname(executable)), "Info.plist");
@@ -40,7 +46,9 @@ export function cliPreflightError(bin: string, allowLaunch = false): string | nu
     return `Obsidian installer ${version ?? "unknown"} does not support the CLI (requires ${MIN_CLI_VERSION}+); update the installer from https://obsidian.md/download`;
   }
   if (!allowLaunch) {
-    const running = spawnSync("pgrep", ["-x", "Obsidian"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS, env: process.env });
+    const uid = process.geteuid?.();
+    if (uid === undefined) return "Could not determine the current user; automatic CLI call skipped";
+    const running = spawnSync("pgrep", ["-u", String(uid), "-x", "Obsidian"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS, env: process.env });
     if (running.status !== 0) return "Obsidian is not running; automatic CLI calls will not launch it";
   }
   return null;

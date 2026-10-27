@@ -72,6 +72,25 @@ describe.skipIf(process.platform !== "darwin")("macOS CLI launch safety", () => 
     expect(readFileSync(calls, "utf8")).toBe("daily:path\n");
   });
 
+  it("does not mistake another user's Obsidian for the current user's app", () => {
+    installer("1.14.5");
+    // A global query finds another user's process; the current user has none.
+    writeFileSync(join(root, "bin/pgrep"), `#!/bin/sh\nif [ "$1" = '-u' ] && [ "$2" = '${process.geteuid!()}' ]; then exit 1; fi\nexit 0\n`);
+    expect(cliDailyPath()).toBeNull();
+    expect(cliEnsureDailyNoteExists()).toBe(false);
+    expect(existsSync(calls)).toBe(false);
+  });
+
+  it("resolves PATH command overrides and still guards bundle symlinks", () => {
+    const wrapper = join(root, "bin/my-obsidian-wrapper");
+    writeFileSync(wrapper, "#!/bin/sh\necho 'Daily/fixture.md'\n");
+    chmodSync(wrapper, 0o755);
+    expect(cliPreflightError("my-obsidian-wrapper")).toBeNull();
+    symlinkSync(bin, join(root, "bin/old-obsidian"));
+    expect(cliPreflightError("old-obsidian")).toContain("installer 1.8.9");
+    expect(existsSync(calls)).toBe(false);
+  });
+
   it("journals missing-note entries without launching the app, then replays them", () => {
     const vault = join(root, "vault");
     mkdirSync(join(vault, ".obsidian"), { recursive: true });
