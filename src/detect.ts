@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { spawnSync } from "child_process";
-import { resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
+import { resolveCliBin, parseCliVersion, cliPreflightError } from "./obsidian-cli.js";
 
 export interface DetectedVault {
   path: string;
@@ -71,11 +71,15 @@ export interface CliDetection {
   version: string | null;
 }
 
-/** Detect Obsidian CLI availability. Lightweight — no app-running check. */
+/** Detect CLI availability without launching a macOS app bundle. */
 export function detectCli(): CliDetection {
   const binPath = resolveCliBin();
   if (!binPath) {
     return { installed: false, binPath: null, version: null };
+  }
+
+  if (cliPreflightError(binPath)) {
+    return { installed: true, binPath, version: null };
   }
 
   const ver = spawnSync(binPath, ["version"], {

@@ -151,13 +151,17 @@ Backfill scans `~/.codex/sessions/YYYY/MM/DD/*.jsonl` and top-level `~/.claude/p
 7. Inserts a source-prefixed session divider such as `[[claude_...]]`, `[[codex_...]]`, or `[[hermes_...]]` if the session changed, then appends the entry
 8. Updates the `> 🕐` latest-entry line at the top of the section
 
-Steady-state overhead is under 50ms per prompt when the Daily Note already exists. Missing-note bootstrap depends on Obsidian CLI startup. Fire-and-forget, never blocks Claude Code.
+Steady-state overhead is under 50ms per prompt when the Daily Note already exists. Missing-note bootstrap depends on an available Obsidian CLI. On macOS, automatic calls to an app bundle require a supported installer and an already-running app; they do not intentionally launch a closed app. Fire-and-forget, never blocks Claude Code.
 
 ## Daily Note Format
 
 ### Obsidian Mode (default)
 
 AgentLog resolves the Daily Note path from `.obsidian/daily-notes.json` first, then `obsidian daily:path` when the vault settings are unavailable or unsupported. If the resolved Daily Note is missing, AgentLog runs `obsidian daily` before writing and only appends after the file exists, preserving the user's Daily Notes template. Obsidian mode does not create a guessed `{vault}/Daily/...` fallback file; if no safe path can be resolved or the CLI cannot bootstrap a missing note, the hook fails softly and skips the write. Plain mode still writes directly to `{dir}/YYYY-MM-DD.md`.
+
+On macOS, AgentLog resolves command-name overrides through `PATH`, follows symlinks, and reads an app bundle's installer version before invoking its executable. An installer older than 1.12.4 is rejected even if the app's downloaded update is newer. Automatic hook, `detect`, and `doctor` calls also require the app to be running under the current effective user. Only explicit `agentlog open` may start a supported installer. Custom standalone CLI wrappers and other operating systems retain their existing behavior. `doctor` checks today's note on disk rather than treating CLI startup output as note contents.
+
+With Git-sync enabled and a resolvable note path, a missing note's entry is saved to the local journal even when bootstrap is blocked. Create the note with its usual template, then run `agentlog git-sync replay` (or let the next logged prompt replay that note). Without Git-sync, a missing-note write fails softly; it is not queued. An unresolved note path still prevents capture, so keep `.obsidian/daily-notes.json` configured.
 
 Each working directory gets its own `#### project` subsection. Session changes insert a source-prefixed wiki-link divider such as `[[claude_...]]`, `[[codex_...]]`, or `[[hermes_...]]`. The `> 🕐` blockquote at the top always shows the latest entry across all projects.
 
