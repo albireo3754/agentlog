@@ -5,7 +5,8 @@
  */
 
 import { spawnSync } from "child_process";
-import { existsSync } from "fs";
+import { existsSync, realpathSync } from "fs";
+import { dirname, join } from "path";
 
 /** Known macOS paths where Obsidian CLI binary may live (PATH may not include these). */
 const MACOS_CLI_PATHS = [
@@ -15,8 +16,35 @@ const MACOS_CLI_PATHS = [
 /** Timeout for lightweight CLI probes such as `which`, `version`, and `daily:path`. */
 export const CLI_PROBE_TIMEOUT_MS = 3000;
 
-/** Missing-note bootstrap can start or wake Obsidian, so it gets a longer timeout. */
+/** Template application in an already-running app gets a longer timeout. */
 export const DAILY_BOOTSTRAP_TIMEOUT_MS = 10000;
+
+/**
+ * macOS app executables (including symlinks) can launch the GUI even for probes.
+ * Check the installer without executing it, then require an already-running app.
+ * Explicit `agentlog open` may launch a supported installer. Standalone CLI
+ * wrappers supplied via OBSIDIAN_BIN retain their own execution contract.
+ */
+export function cliPreflightError(bin: string, allowLaunch = false): string | null {
+  if (process.platform !== "darwin") return null;
+  let executable: string;
+  try { executable = realpathSync(bin); } catch { return "Obsidian CLI executable not found"; }
+  if (!/\.app\/Contents\/MacOS\/[^/]+$/.test(executable)) return null;
+
+  const plist = join(dirname(dirname(executable)), "Info.plist");
+  const probe = spawnSync("/usr/libexec/PlistBuddy", ["-c", "Print :CFBundleShortVersionString", plist], {
+    encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS,
+  });
+  const version = probe.status === 0 ? parseCliVersion(probe.stdout) : null;
+  if (!version || !isVersionAtLeast(version, MIN_CLI_VERSION)) {
+    return `Obsidian installer ${version ?? "unknown"} does not support the CLI (requires ${MIN_CLI_VERSION}+); update the installer from https://obsidian.md/download`;
+  }
+  if (!allowLaunch) {
+    const running = spawnSync("pgrep", ["-x", "Obsidian"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS, env: process.env });
+    if (running.status !== 0) return "Obsidian is not running; automatic CLI calls will not launch it";
+  }
+  return null;
+}
 
 type CliBinCacheState =
   | { status: "unresolved" }
@@ -86,7 +114,7 @@ export function resolveCliBin(): string | null {
  */
 export function cliDailyPath(): string | null {
   const bin = resolveCliBin();
-  if (!bin) return null;
+  if (!bin || cliPreflightError(bin)) return null;
   const result = spawnSync(bin, ["daily:path"], { encoding: "utf-8", timeout: CLI_PROBE_TIMEOUT_MS });
   if (result.status !== 0) return null;
   if (isCliDisabledOutput(result.stdout) || isCliDisabledOutput(result.stderr)) return null;
@@ -101,12 +129,12 @@ export function cliDailyPath(): string | null {
 }
 
 /**
- * Ask Obsidian to create/open today's Daily Note through its official flow.
+ * Ask an already-running Obsidian to create/open today's Daily Note.
  * This lets Obsidian apply the user's Daily Notes template before AgentLog writes.
  */
 export function cliEnsureDailyNoteExists(): boolean {
   const bin = resolveCliBin();
-  if (!bin) return false;
+  if (!bin || cliPreflightError(bin)) return false;
   const result = spawnSync(bin, ["daily"], { encoding: "utf-8", timeout: DAILY_BOOTSTRAP_TIMEOUT_MS });
   if (result.status !== 0) return false;
   // A disabled CLI exits 0 while only printing a warning — never bootstraps the note.
@@ -117,10 +145,11 @@ export function cliEnsureDailyNoteExists(): boolean {
 /** Minimum Obsidian version that supports CLI */
 export const MIN_CLI_VERSION = "1.12.4";
 
-/** Extract version string from CLI stdout (last non-empty line). */
+/** Accept only a version line, never an Electron startup/update log. */
 export function parseCliVersion(stdout: string): string | null {
   const lines = stdout.trim().split("\n").filter(Boolean);
-  return (lines.at(-1) ?? "").trim() || null;
+  const match = (lines.at(-1) ?? "").trim().match(/^(\d+\.\d+\.\d+)(?: \(installer \d+\.\d+\.\d+\))?$/);
+  return match?.[1] ?? null;
 }
 
 /**
@@ -128,6 +157,7 @@ export function parseCliVersion(stdout: string): string | null {
  * Returns true if `version` >= `minimum`.
  */
 export function isVersionAtLeast(version: string, minimum: string): boolean {
+  if (!/^\d+(?:\.\d+)*$/.test(version) || !/^\d+(?:\.\d+)*$/.test(minimum)) return false;
   const parse = (v: string) => v.split(".").map((n) => parseInt(n, 10) || 0);
   const ver = parse(version);
   const min = parse(minimum);

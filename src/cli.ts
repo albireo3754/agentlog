@@ -22,7 +22,7 @@ import { replayJournal } from "./event-journal.js";
 import { saveConfig, loadConfig, expandHome, configPath, configDir } from "./config.js";
 import type { AgentLogConfig } from "./types.js";
 import { detectVaults, detectCli } from "./detect.js";
-import { isVersionAtLeast, isCliDisabledOutput, MIN_CLI_VERSION, resolveCliBin, parseCliVersion } from "./obsidian-cli.js";
+import { isVersionAtLeast, isCliDisabledOutput, MIN_CLI_VERSION, resolveCliBin, parseCliVersion, cliPreflightError } from "./obsidian-cli.js";
 import { unregisterHook, inspectClaudeHookState, CLAUDE_SETTINGS_PATH } from "./claude-settings.js";
 import {
   ask,
@@ -488,7 +488,11 @@ async function cmdDoctor(): Promise<void> {
       true
     );
 
-    if (cliBinPath) {
+    const preflightError = cliBinPath ? cliPreflightError(cliBinPath) : null;
+    if (preflightError) {
+      check("cli-app", false, preflightError, undefined, true);
+    }
+    if (cliBinPath && !preflightError) {
       // 5a. CLI version + minimum version check
       const cliVer = spawnSync(cliBinPath, ["version"], { encoding: "utf-8", timeout: 3000 });
       const cliVerDisabled = isCliDisabledOutput(cliVer.stdout) || isCliDisabledOutput(cliVer.stderr);
@@ -512,9 +516,11 @@ async function cmdDoctor(): Promise<void> {
 
       // 5b. CLI responsive (app running + CLI enabled + can communicate).
       // A disabled CLI exits 0 while only printing a warning, so status alone is not enough.
-      const cliProbe = spawnSync(cliBinPath, ["daily:path"], { encoding: "utf-8", timeout: 3000 });
-      const cliDisabled = isCliDisabledOutput(cliProbe.stdout) || isCliDisabledOutput(cliProbe.stderr);
-      const cliResponsive = cliProbe.status === 0 && !cliDisabled;
+      const cliProbe = version && isVersionAtLeast(version, MIN_CLI_VERSION)
+        ? spawnSync(cliBinPath, ["daily:path"], { encoding: "utf-8", timeout: 3000 })
+        : null;
+      const cliDisabled = isCliDisabledOutput(cliProbe?.stdout) || isCliDisabledOutput(cliProbe?.stderr);
+      const cliResponsive = cliProbe?.status === 0 && !cliDisabled && (cliProbe.stdout ?? "").trim().endsWith(".md");
       check(
         "cli-app",
         cliResponsive,
@@ -525,20 +531,12 @@ async function cmdDoctor(): Promise<void> {
         true
       );
 
-      // 5c. Daily note status (only when CLI is responsive)
-      if (cliResponsive) {
-        const dailyRead = spawnSync(cliBinPath, ["daily:read"], { encoding: "utf-8", timeout: 3000 });
-        const dailyDisabled = isCliDisabledOutput(dailyRead.stdout) || isCliDisabledOutput(dailyRead.stderr);
-        const noteExists =
-          dailyRead.status === 0 && !dailyDisabled && (dailyRead.stdout ?? "").trim().length > 0;
-        check(
-          "daily",
-          noteExists,
-          noteExists ? "today's note exists" : "today's note not found (will be created on first log)",
-          undefined,
-          true
-        );
-      }
+    }
+    // File existence is authoritative; GUI startup messages are not note content.
+    if (config) {
+      const path = dailyNotePath(config, new Date());
+      const noteExists = !!path && existsSync(path);
+      check("daily", noteExists, noteExists ? "today's note exists" : "today's note not found; open/create it before logging", undefined, true);
     }
   }
 
@@ -608,6 +606,12 @@ async function cmdOpen(): Promise<void> {
   if (!cliBin) {
     console.error("Failed to open. Obsidian CLI not found.");
     console.error(`  Enable CLI in Obsidian ${MIN_CLI_VERSION}+ Settings > General > Command line interface`);
+    process.exit(1);
+    return;
+  }
+  const preflightError = cliPreflightError(cliBin, true);
+  if (preflightError) {
+    console.error(`Failed to open. ${preflightError}`);
     process.exit(1);
     return;
   }
