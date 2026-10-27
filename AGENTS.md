@@ -285,6 +285,8 @@ Legacy handler for older Codex `notify` installs on `agent-turn-complete`. Do no
 
 - Used to resolve the Daily Note path from `.obsidian/daily-notes.json`, then `obsidian daily:path`
 - Used to bootstrap a missing Daily Note via `obsidian daily` before AgentLog writes, preserving the user's Daily Notes template
+- On macOS, app-bundle CLI calls (including symlinks) first check the installer version without executing it. Automatic hook/detect/doctor calls require an already-running app; only explicit `open` may launch a supported installer. Standalone wrappers and other OSes keep their existing behavior.
+- When Git-sync is enabled and the Daily path is resolved, blocked bootstrap preserves the entry in the local journal. Create the note normally and replay; do not delete that journal or fabricate a template-less note.
 - Minimum version: checked by `doctor` (1.12.4+)
 - Override binary path: `OBSIDIAN_BIN`
 - No guessed `{vault}/Daily/...` fallback is created in Obsidian mode when no safe path or bootstrap is available
